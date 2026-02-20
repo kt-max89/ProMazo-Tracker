@@ -1,0 +1,86 @@
+Build a TRIAL-RUN Internal Notes Q&A app in Replit (NO Google Drive API). Use a small local dataset stored in the app’s database.
+
+GOAL
+A secure multi-user chat app that answers questions using RAG over documents we manually add/upload. Users have different access levels to documents. The assistant must only use documents the user is allowed to access and must cite sources for every answer.
+
+STACK (required)
+- Next.js (App Router) + TypeScript
+- Tailwind CSS
+- PostgreSQL + pgvector (vector search)
+- OpenAI API for embeddings + chat completions (server-side only)
+- Simple auth for trial run: email + password OR magic-link style (choose the easiest). Store users in DB.
+- No Google Drive API, no external connectors.
+
+HARD REQUIREMENTS
+1) Privacy / “no training”
+- All OpenAI calls server-side only.
+- Do not expose OPENAI_API_KEY to the client.
+- Do not log raw document text or user queries in production mode.
+- UI disclaimer: “This tool does not train models on your data. It retrieves relevant excerpts from authorized documents and sends only those excerpts to the model for answering.”
+
+2) Access control (critical)
+- Each document has an access policy.
+- Support at least these access modes:
+  a) private_to_users: list of allowed user emails
+  b) domain: allow any user with email ending in a specified domain (e.g., schwab.com) [optional toggle]
+  c) role-based: admin-only docs
+- At query time, retrieval must be limited to documents the current user can access.
+- Never reveal titles/snippets of documents the user is not authorized to access.
+- If no sufficient accessible context: respond “I don’t have enough accessible context to answer that.”
+
+3) RAG pipeline
+- Admin can add documents by:
+  - Uploading txt/md/pdf
+  - Or pasting text into a textarea
+- Extract text for PDFs server-side.
+- Normalize text lightly.
+- Chunking: ~800 tokens, ~120 overlap.
+- Create embeddings for chunks and store in pgvector.
+- Retrieval: embed query → pre-filter docs by access → vector search within allowed docs → top 12 chunks.
+- Generation prompt: “use only context, cite sources, don’t guess.”
+
+4) Citations
+- Every assistant answer must include “Sources” listing:
+  - document title
+  - chunk index
+  - short snippet preview (1–2 lines)
+- Sources shown only from accessible docs.
+
+PAGES / ROUTES
+- /login : simple auth
+- /chat : chat UI (ChatGPT-like)
+- /admin : admin-only
+  - upload/paste documents
+  - set access policy (allowed users list, admin-only toggle, optional domain)
+  - list indexed docs + status
+  - buttons: “Reindex doc”, “Delete doc”, “Clear all + rebuild”
+- /api/chat : chat endpoint (server-side)
+- /api/admin/* : ingestion endpoints (admin-only)
+
+DATABASE (conceptual schema)
+- users: id, email, password_hash (or auth token), role ('admin'|'user'), created_at
+- documents: id, title, raw_text (optional), access_mode, allowed_users (array), allowed_domain (text nullable), admin_only (bool), created_at, updated_at
+- chunks: id, document_id, chunk_index, chunk_text, embedding (vector), created_at
+
+SETUP REQUIREMENTS
+- Include README with:
+  - how to set env vars in Replit
+  - how to create Postgres + enable pgvector
+  - how to create an initial admin user (seed script or admin invite)
+  - how to upload docs and test access controls
+
+ENV VARS
+- OPENAI_API_KEY
+- DATABASE_URL
+- OPENAI_MODEL (default gpt-4o-mini)
+- EMBEDDING_MODEL (default text-embedding-3-small)
+
+IMPLEMENTATION ORDER
+1) Scaffold Next.js + Tailwind
+2) DB connection + migrations + seed admin user
+3) Auth flow (simple)
+4) Admin upload/paste + indexing pipeline (extract → chunk → embed → store)
+5) Chat endpoint with pre-filtered retrieval + citations
+6) UI polish
+
+Deliver a working Replit project with clear file structure and minimal but clean UI.
