@@ -101,7 +101,8 @@ export async function registerRoutes(
         const { PDFParse } = await import("pdf-parse");
         const parser = new PDFParse({ data: new Uint8Array(req.file.buffer) });
         await parser.load();
-        text = await parser.getText();
+        const pdfResult = await parser.getText();
+        text = pdfResult.text;
       } else {
         text = req.file.buffer.toString("utf-8");
       }
