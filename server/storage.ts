@@ -85,11 +85,12 @@ export class DatabaseStorage implements IStorage {
     if (documentIds.length === 0) return [];
     
     const embeddingStr = `[${embedding.join(",")}]`;
+    const docIdsArray = `{${documentIds.join(",")}}`;
     const result = await db.execute(sql`
       SELECT id, document_id, chunk_index, chunk_text, chunk_hash, embedding,
              1 - (embedding <=> ${embeddingStr}::vector) as similarity
       FROM chunks
-      WHERE document_id = ANY(${documentIds})
+      WHERE document_id = ANY(${docIdsArray}::int[])
         AND embedding IS NOT NULL
       ORDER BY embedding <=> ${embeddingStr}::vector
       LIMIT ${limit}
