@@ -1,16 +1,313 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
+import passport from "passport";
+import bcrypt from "bcrypt";
+import multer from "multer";
 import { storage } from "./storage";
+import { setupAuth, requireAuth, requireAdmin } from "./auth";
+import { registerSchema, loginSchema } from "@shared/schema";
+import { chunkText, hashChunk, getEmbedding, getEmbeddings, streamChatCompletion } from "./openai";
+
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
 export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
-  // put application routes here
-  // prefix all routes with /api
+  setupAuth(app);
 
-  // use storage to perform CRUD operations on the storage interface
-  // e.g. storage.insertUser(user) or storage.getUserByUsername(username)
+  // Auth routes
+  app.post("/api/auth/register", async (req, res) => {
+    try {
+      const parsed = registerSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: parsed.error.errors[0].message });
+      }
+      const { email, password, displayName } = parsed.data;
+      const existing = await storage.getUserByEmail(email);
+      if (existing) {
+        return res.status(409).json({ message: "Email already registered" });
+      }
+      const passwordHash = await bcrypt.hash(password, 12);
+      const allUsers = await storage.getAllUsers();
+      const role = allUsers.length === 0 ? "admin" : "user";
+      const user = await storage.createUser({ email, passwordHash, displayName, role });
+      req.login(user, (err) => {
+        if (err) return res.status(500).json({ message: "Login failed after registration" });
+        const { passwordHash: _, ...safeUser } = user;
+        return res.json(safeUser);
+      });
+    } catch (err: any) {
+      return res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/auth/login", (req, res, next) => {
+    const parsed = loginSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ message: parsed.error.errors[0].message });
+    }
+    passport.authenticate("local", (err: any, user: any, info: any) => {
+      if (err) return next(err);
+      if (!user) return res.status(401).json({ message: info?.message || "Invalid credentials" });
+      req.login(user, (err) => {
+        if (err) return next(err);
+        const { passwordHash: _, ...safeUser } = user;
+        return res.json(safeUser);
+      });
+    })(req, res, next);
+  });
+
+  app.post("/api/auth/logout", (req, res) => {
+    req.logout((err) => {
+      if (err) return res.status(500).json({ message: "Logout failed" });
+      res.json({ message: "Logged out" });
+    });
+  });
+
+  app.get("/api/auth/me", (req, res) => {
+    if (!req.isAuthenticated()) return res.status(401).json({ message: "Not authenticated" });
+    const { passwordHash: _, ...safeUser } = req.user!;
+    res.json(safeUser);
+  });
+
+  // Document management (admin only)
+  app.get("/api/documents", requireAuth, async (req, res) => {
+    try {
+      const docs = await storage.getAllDocuments();
+      if (req.user!.role === "admin") {
+        return res.json(docs);
+      }
+      const accessibleIds = await storage.getAccessibleDocumentIds(req.user! as any);
+      return res.json(docs.filter(d => accessibleIds.includes(d.id)));
+    } catch (err: any) {
+      return res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/documents", requireAdmin, upload.single("file"), async (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ message: "No file uploaded" });
+      }
+
+      const title = req.body.title || req.file.originalname;
+      const adminOnly = req.body.adminOnly === "true";
+      const allowedUsers = req.body.allowedUsers ? JSON.parse(req.body.allowedUsers) : [];
+      const allowedDomain = req.body.allowedDomain || null;
+
+      let text = "";
+      if (req.file.mimetype === "application/pdf") {
+        const pdfParse = (await import("pdf-parse")).default;
+        const pdfData = await pdfParse(req.file.buffer);
+        text = pdfData.text;
+      } else {
+        text = req.file.buffer.toString("utf-8");
+      }
+
+      if (!text || text.trim().length < 50) {
+        return res.status(400).json({ 
+          message: "Extracted text is too short or empty. The file may be image-based or corrupted." 
+        });
+      }
+
+      const textChunks = chunkText(text);
+      const hashes = textChunks.map(hashChunk);
+      const embeddings = await getEmbeddings(textChunks);
+
+      const doc = await storage.createDocument({
+        title,
+        filename: req.file.originalname,
+        adminOnly,
+        allowedUsers,
+        allowedDomain,
+        chunkCount: textChunks.length,
+        uploadedBy: req.user!.id,
+        uploadedAt: new Date().toISOString(),
+      });
+
+      const chunkData = textChunks.map((ct, i) => ({
+        documentId: doc.id,
+        chunkIndex: i,
+        chunkText: ct,
+        chunkHash: hashes[i],
+        embedding: embeddings[i],
+      }));
+
+      await storage.insertChunks(chunkData);
+      return res.json(doc);
+    } catch (err: any) {
+      return res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/documents/:id/reindex", requireAdmin, async (req, res) => {
+    try {
+      const docId = parseInt(req.params.id);
+      const doc = await storage.getDocument(docId);
+      if (!doc) return res.status(404).json({ message: "Document not found" });
+
+      const existingChunks = await storage.getChunksByDocumentId(docId);
+      const existingHashes = new Map(existingChunks.map(c => [c.chunkHash, c]));
+
+      const chunksToEmbed: { index: number; text: string }[] = [];
+      const keptChunks: typeof existingChunks = [];
+
+      for (const chunk of existingChunks) {
+        const newHash = hashChunk(chunk.chunkText);
+        if (newHash === chunk.chunkHash && chunk.embedding) {
+          keptChunks.push(chunk);
+        } else {
+          chunksToEmbed.push({ index: chunk.chunkIndex, text: chunk.chunkText });
+        }
+      }
+
+      if (chunksToEmbed.length === 0) {
+        return res.json({ message: "No changes detected, skipping re-embedding", doc });
+      }
+
+      const embeddings = await getEmbeddings(chunksToEmbed.map(c => c.text));
+      await storage.deleteChunksByDocumentId(docId);
+
+      const allChunks = [
+        ...keptChunks.map(c => ({
+          documentId: c.documentId,
+          chunkIndex: c.chunkIndex,
+          chunkText: c.chunkText,
+          chunkHash: c.chunkHash,
+          embedding: c.embedding,
+        })),
+        ...chunksToEmbed.map((c, i) => ({
+          documentId: docId,
+          chunkIndex: c.index,
+          chunkText: c.text,
+          chunkHash: hashChunk(c.text),
+          embedding: embeddings[i],
+        })),
+      ];
+
+      await storage.insertChunks(allChunks);
+      await storage.updateDocument(docId, { chunkCount: allChunks.length });
+      return res.json({ message: `Re-indexed ${chunksToEmbed.length} chunks`, doc });
+    } catch (err: any) {
+      return res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.patch("/api/documents/:id", requireAdmin, async (req, res) => {
+    try {
+      const docId = parseInt(req.params.id);
+      const { title, adminOnly, allowedUsers, allowedDomain } = req.body;
+      const updates: any = {};
+      if (title !== undefined) updates.title = title;
+      if (adminOnly !== undefined) updates.adminOnly = adminOnly;
+      if (allowedUsers !== undefined) updates.allowedUsers = allowedUsers;
+      if (allowedDomain !== undefined) updates.allowedDomain = allowedDomain;
+      
+      const doc = await storage.updateDocument(docId, updates);
+      if (!doc) return res.status(404).json({ message: "Document not found" });
+      return res.json(doc);
+    } catch (err: any) {
+      return res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.delete("/api/documents/:id", requireAdmin, async (req, res) => {
+    try {
+      const docId = parseInt(req.params.id);
+      await storage.deleteDocument(docId);
+      return res.json({ message: "Deleted" });
+    } catch (err: any) {
+      return res.status(500).json({ message: err.message });
+    }
+  });
+
+  // Chat / Q&A endpoint with streaming
+  app.post("/api/chat", requireAuth, async (req, res) => {
+    try {
+      const { query } = req.body;
+      if (!query || typeof query !== "string" || query.trim().length === 0) {
+        return res.status(400).json({ message: "Query is required" });
+      }
+
+      const user = req.user! as any;
+      const accessibleDocIds = await storage.getAccessibleDocumentIds(user);
+      if (accessibleDocIds.length === 0) {
+        return res.status(200).json({ 
+          answer: "You don't have access to any documents. Please contact an administrator.",
+          citations: []
+        });
+      }
+
+      const queryEmbedding = await getEmbedding(query.trim());
+      const similarChunks = await storage.searchSimilarChunks(queryEmbedding, accessibleDocIds, 5);
+
+      if (similarChunks.length === 0) {
+        return res.status(200).json({
+          answer: "No relevant information found in the documents you have access to.",
+          citations: []
+        });
+      }
+
+      const allDocs = await storage.getAllDocuments();
+      const docMap = new Map(allDocs.map(d => [d.id, d]));
+
+      const contextChunks = similarChunks.map(chunk => ({
+        ...chunk,
+        documentTitle: docMap.get(chunk.documentId)?.title || "Unknown",
+      }));
+
+      // Set up streaming response
+      res.setHeader("Content-Type", "text/event-stream");
+      res.setHeader("Cache-Control", "no-cache");
+      res.setHeader("Connection", "keep-alive");
+
+      // Send citations first
+      const citationData = contextChunks.map(c => ({
+        documentId: c.documentId,
+        documentTitle: c.documentTitle,
+        chunkId: c.id,
+        chunkText: c.chunkText.slice(0, 200),
+        similarity: c.similarity,
+      }));
+      res.write(`data: ${JSON.stringify({ type: "citations", data: citationData })}\n\n`);
+
+      // Record citations
+      for (const chunk of contextChunks) {
+        await storage.createCitation({
+          userId: user.id,
+          documentId: chunk.documentId,
+          chunkId: chunk.id,
+          query: query.trim().slice(0, 500),
+          createdAt: new Date().toISOString(),
+        });
+      }
+
+      // Stream answer
+      for await (const token of streamChatCompletion(query, contextChunks)) {
+        res.write(`data: ${JSON.stringify({ type: "token", data: token })}\n\n`);
+      }
+
+      res.write(`data: ${JSON.stringify({ type: "done" })}\n\n`);
+      res.end();
+    } catch (err: any) {
+      if (!res.headersSent) {
+        return res.status(500).json({ message: err.message });
+      }
+      res.write(`data: ${JSON.stringify({ type: "error", data: err.message })}\n\n`);
+      res.end();
+    }
+  });
+
+  // Citation history
+  app.get("/api/citations", requireAuth, async (req, res) => {
+    try {
+      const cits = await storage.getCitationsByUserId(req.user!.id);
+      return res.json(cits);
+    } catch (err: any) {
+      return res.status(500).json({ message: err.message });
+    }
+  });
 
   return httpServer;
 }
