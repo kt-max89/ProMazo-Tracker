@@ -117,6 +117,10 @@ export class DatabaseStorage implements IStorage {
     }));
   }
 
+  async deleteCitationsByDocumentId(documentId: number): Promise<void> {
+    await db.delete(citations).where(eq(citations.documentId, documentId));
+  }
+
   async createCitation(citation: Omit<Citation, "id">): Promise<Citation> {
     const [created] = await db.insert(citations).values(citation).returning();
     return created;

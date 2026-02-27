@@ -217,6 +217,7 @@ export async function registerRoutes(
   app.delete("/api/documents/:id", requireAdmin, async (req, res) => {
     try {
       const docId = parseInt(req.params.id);
+      await storage.deleteCitationsByDocumentId(docId);
       await storage.deleteDocument(docId);
       return res.json({ message: "Deleted" });
     } catch (err: any) {
