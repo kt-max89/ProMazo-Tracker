@@ -144,7 +144,7 @@ export default function AuthPage() {
             </li>
             <li className="flex items-start gap-3">
               <div className="w-1.5 h-1.5 rounded-full bg-primary mt-2 shrink-0" />
-              Privacy-first — no chat history stored
+              Privacy-first — your data stays secure
             </li>
           </ul>
         </div>

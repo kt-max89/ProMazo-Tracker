@@ -7,8 +7,9 @@ import { Link } from "wouter";
 import { 
   Upload, FileText, Trash2, RefreshCw, ArrowLeft, Shield, 
   Users, Lock, Globe, ChevronDown, ChevronUp, Loader2,
-  CheckCircle, XCircle, X
+  CheckCircle, XCircle, X, Sun, Moon
 } from "lucide-react";
+import { useTheme } from "@/components/theme-provider";
 
 type Document = {
   id: number;
@@ -25,6 +26,7 @@ type Document = {
 export default function AdminPage() {
   const { user } = useAuth();
   const { toast } = useToast();
+  const { theme, toggleTheme } = useTheme();
   const [expandedDoc, setExpandedDoc] = useState<number | null>(null);
 
   const { data: documents, isLoading } = useQuery<Document[]>({
@@ -51,14 +53,24 @@ export default function AdminPage() {
 
   return (
     <div className="min-h-screen bg-background" data-testid="admin-page">
-      <header className="border-b px-6 py-3 flex items-center gap-3">
-        <Link href="/">
-          <button data-testid="link-back" className="p-2 rounded-lg hover:bg-muted transition-colors">
-            <ArrowLeft className="w-4 h-4" />
-          </button>
-        </Link>
-        <Shield className="w-5 h-5 text-primary" />
-        <h1 className="font-semibold text-lg">Document Management</h1>
+      <header className="border-b px-6 py-3 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <Link href="/">
+            <button data-testid="link-back" className="p-2 rounded-lg hover:bg-muted transition-colors">
+              <ArrowLeft className="w-4 h-4" />
+            </button>
+          </Link>
+          <Shield className="w-5 h-5 text-primary" />
+          <h1 className="font-semibold text-lg">Document Management</h1>
+        </div>
+        <button
+          data-testid="button-toggle-theme"
+          onClick={toggleTheme}
+          className="p-2 rounded-lg hover:bg-muted transition-colors"
+          title={theme === "light" ? "Switch to dark mode" : "Switch to light mode"}
+        >
+          {theme === "light" ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
+        </button>
       </header>
 
       <div className="max-w-4xl mx-auto p-6 space-y-6">

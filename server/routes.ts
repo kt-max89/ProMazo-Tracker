@@ -227,28 +227,44 @@ export async function registerRoutes(
   // Chat / Q&A endpoint with streaming
   app.post("/api/chat", requireAuth, async (req, res) => {
     try {
-      const { query } = req.body;
+      const { query, sessionId } = req.body;
       if (!query || typeof query !== "string" || query.trim().length === 0) {
         return res.status(400).json({ message: "Query is required" });
       }
 
       const user = req.user! as any;
+
+      let activeSessionId = sessionId ? parseInt(sessionId) : null;
+      if (activeSessionId) {
+        const session = await storage.getChatSession(activeSessionId);
+        if (!session || session.userId !== user.id) {
+          activeSessionId = null;
+        }
+      }
+
+      if (activeSessionId) {
+        await storage.addChatMessage({ sessionId: activeSessionId, role: "user", content: query.trim() });
+        await storage.updateChatSessionTimestamp(activeSessionId);
+      }
+
       const accessibleDocIds = await storage.getAccessibleDocumentIds(user);
       if (accessibleDocIds.length === 0) {
-        return res.status(200).json({ 
-          answer: "You don't have access to any documents. Please contact an administrator.",
-          citations: []
-        });
+        const fallback = "You don't have access to any documents. Please contact an administrator.";
+        if (activeSessionId) {
+          await storage.addChatMessage({ sessionId: activeSessionId, role: "assistant", content: fallback });
+        }
+        return res.status(200).json({ answer: fallback, citations: [] });
       }
 
       const queryEmbedding = await getEmbedding(query.trim());
       const similarChunks = await storage.searchSimilarChunks(queryEmbedding, accessibleDocIds, 5);
 
       if (similarChunks.length === 0) {
-        return res.status(200).json({
-          answer: "No relevant information found in the documents you have access to.",
-          citations: []
-        });
+        const fallback = "No relevant information found in the documents you have access to.";
+        if (activeSessionId) {
+          await storage.addChatMessage({ sessionId: activeSessionId, role: "assistant", content: fallback });
+        }
+        return res.status(200).json({ answer: fallback, citations: [] });
       }
 
       const allDocs = await storage.getAllDocuments();
@@ -259,12 +275,10 @@ export async function registerRoutes(
         documentTitle: docMap.get(chunk.documentId)?.title || "Unknown",
       }));
 
-      // Set up streaming response
       res.setHeader("Content-Type", "text/event-stream");
       res.setHeader("Cache-Control", "no-cache");
       res.setHeader("Connection", "keep-alive");
 
-      // Send citations first
       const citationData = contextChunks.map(c => ({
         documentId: c.documentId,
         documentTitle: c.documentTitle,
@@ -274,7 +288,6 @@ export async function registerRoutes(
       }));
       res.write(`data: ${JSON.stringify({ type: "citations", data: citationData })}\n\n`);
 
-      // Record citations
       for (const chunk of contextChunks) {
         await storage.createCitation({
           userId: user.id,
@@ -285,9 +298,14 @@ export async function registerRoutes(
         });
       }
 
-      // Stream answer
+      let fullAnswer = "";
       for await (const token of streamChatCompletion(query, contextChunks)) {
+        fullAnswer += token;
         res.write(`data: ${JSON.stringify({ type: "token", data: token })}\n\n`);
+      }
+
+      if (activeSessionId) {
+        await storage.addChatMessage({ sessionId: activeSessionId, role: "assistant", content: fullAnswer });
       }
 
       res.write(`data: ${JSON.stringify({ type: "done" })}\n\n`);
@@ -298,6 +316,55 @@ export async function registerRoutes(
       }
       res.write(`data: ${JSON.stringify({ type: "error", data: err.message })}\n\n`);
       res.end();
+    }
+  });
+
+  // Chat sessions
+  app.get("/api/chat-sessions", requireAuth, async (req, res) => {
+    try {
+      const sessions = await storage.getChatSessionsByUserId(req.user!.id);
+      return res.json(sessions);
+    } catch (err: any) {
+      return res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/chat-sessions", requireAuth, async (req, res) => {
+    try {
+      const { title } = req.body;
+      const session = await storage.createChatSession({
+        userId: req.user!.id,
+        title: title || "New Chat",
+      });
+      return res.json(session);
+    } catch (err: any) {
+      return res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/chat-sessions/:id", requireAuth, async (req, res) => {
+    try {
+      const sessionId = parseInt(req.params.id);
+      const session = await storage.getChatSession(sessionId);
+      if (!session) return res.status(404).json({ message: "Session not found" });
+      if (session.userId !== req.user!.id) return res.status(403).json({ message: "Access denied" });
+      const messages = await storage.getChatMessagesBySessionId(sessionId);
+      return res.json({ session, messages });
+    } catch (err: any) {
+      return res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.delete("/api/chat-sessions/:id", requireAuth, async (req, res) => {
+    try {
+      const sessionId = parseInt(req.params.id);
+      const session = await storage.getChatSession(sessionId);
+      if (!session) return res.status(404).json({ message: "Session not found" });
+      if (session.userId !== req.user!.id) return res.status(403).json({ message: "Access denied" });
+      await storage.deleteChatSession(sessionId);
+      return res.json({ message: "Deleted" });
+    } catch (err: any) {
+      return res.status(500).json({ message: err.message });
     }
   });
 

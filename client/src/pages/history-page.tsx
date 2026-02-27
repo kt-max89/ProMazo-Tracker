@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
-import { ArrowLeft, BookOpen, FileText, Loader2 } from "lucide-react";
+import { ArrowLeft, BookOpen, FileText, Loader2, Sun, Moon } from "lucide-react";
+import { useTheme } from "@/components/theme-provider";
 
 type CitationRecord = {
   id: number;
@@ -13,6 +14,7 @@ type CitationRecord = {
 };
 
 export default function HistoryPage() {
+  const { theme, toggleTheme } = useTheme();
   const { data: citations, isLoading } = useQuery<CitationRecord[]>({
     queryKey: ["/api/citations"],
   });
@@ -28,14 +30,24 @@ export default function HistoryPage() {
 
   return (
     <div className="min-h-screen bg-background" data-testid="history-page">
-      <header className="border-b px-6 py-3 flex items-center gap-3">
-        <Link href="/">
-          <button data-testid="link-back" className="p-2 rounded-lg hover:bg-muted transition-colors">
-            <ArrowLeft className="w-4 h-4" />
-          </button>
-        </Link>
-        <BookOpen className="w-5 h-5 text-primary" />
-        <h1 className="font-semibold text-lg">Citation History</h1>
+      <header className="border-b px-6 py-3 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <Link href="/">
+            <button data-testid="link-back" className="p-2 rounded-lg hover:bg-muted transition-colors">
+              <ArrowLeft className="w-4 h-4" />
+            </button>
+          </Link>
+          <BookOpen className="w-5 h-5 text-primary" />
+          <h1 className="font-semibold text-lg">Citation History</h1>
+        </div>
+        <button
+          data-testid="button-toggle-theme"
+          onClick={toggleTheme}
+          className="p-2 rounded-lg hover:bg-muted transition-colors"
+          title={theme === "light" ? "Switch to dark mode" : "Switch to light mode"}
+        >
+          {theme === "light" ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
+        </button>
       </header>
 
       <div className="max-w-3xl mx-auto p-6">

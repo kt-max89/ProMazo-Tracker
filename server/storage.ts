@@ -1,6 +1,6 @@
-import { eq, inArray, sql, and } from "drizzle-orm";
+import { eq, inArray, sql, and, desc } from "drizzle-orm";
 import { db } from "./db";
-import { users, documents, chunks, citations, type User, type InsertUser, type Document, type Chunk, type Citation } from "@shared/schema";
+import { users, documents, chunks, citations, chatSessions, chatMessages, type User, type InsertUser, type Document, type Chunk, type Citation, type ChatSession, type InsertChatSession, type ChatMessage, type InsertChatMessage } from "@shared/schema";
 
 export interface IStorage {
   getUser(id: number): Promise<User | undefined>;
@@ -23,6 +23,16 @@ export interface IStorage {
   getCitationsByUserId(userId: number): Promise<(Citation & { documentTitle: string })[]>;
 
   getAccessibleDocumentIds(user: User): Promise<number[]>;
+
+  createChatSession(session: InsertChatSession): Promise<ChatSession>;
+  getChatSessionsByUserId(userId: number): Promise<ChatSession[]>;
+  getChatSession(id: number): Promise<ChatSession | undefined>;
+  deleteChatSession(id: number): Promise<void>;
+  updateChatSessionTitle(id: number, title: string): Promise<void>;
+  updateChatSessionTimestamp(id: number): Promise<void>;
+
+  addChatMessage(message: InsertChatMessage): Promise<ChatMessage>;
+  getChatMessagesBySessionId(sessionId: number): Promise<ChatMessage[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -146,6 +156,52 @@ export class DatabaseStorage implements IStorage {
         return true;
       })
       .map(doc => doc.id);
+  }
+
+  async createChatSession(session: InsertChatSession): Promise<ChatSession> {
+    const [created] = await db.insert(chatSessions).values({
+      ...session,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    }).returning();
+    return created;
+  }
+
+  async getChatSessionsByUserId(userId: number): Promise<ChatSession[]> {
+    return db.select().from(chatSessions)
+      .where(eq(chatSessions.userId, userId))
+      .orderBy(desc(chatSessions.updatedAt));
+  }
+
+  async getChatSession(id: number): Promise<ChatSession | undefined> {
+    const [session] = await db.select().from(chatSessions).where(eq(chatSessions.id, id));
+    return session;
+  }
+
+  async deleteChatSession(id: number): Promise<void> {
+    await db.delete(chatSessions).where(eq(chatSessions.id, id));
+  }
+
+  async updateChatSessionTitle(id: number, title: string): Promise<void> {
+    await db.update(chatSessions).set({ title }).where(eq(chatSessions.id, id));
+  }
+
+  async updateChatSessionTimestamp(id: number): Promise<void> {
+    await db.update(chatSessions).set({ updatedAt: new Date().toISOString() }).where(eq(chatSessions.id, id));
+  }
+
+  async addChatMessage(message: InsertChatMessage): Promise<ChatMessage> {
+    const [created] = await db.insert(chatMessages).values({
+      ...message,
+      createdAt: new Date().toISOString(),
+    }).returning();
+    return created;
+  }
+
+  async getChatMessagesBySessionId(sessionId: number): Promise<ChatMessage[]> {
+    return db.select().from(chatMessages)
+      .where(eq(chatMessages.sessionId, sessionId))
+      .orderBy(chatMessages.createdAt);
   }
 }
 
