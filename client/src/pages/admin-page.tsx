@@ -7,7 +7,7 @@ import { Link } from "wouter";
 import { 
   Upload, FileText, Trash2, RefreshCw, ArrowLeft, Shield, 
   Users, Lock, Globe, ChevronDown, ChevronUp, Loader2,
-  CheckCircle, XCircle, X, Sun, Moon
+  CheckCircle, XCircle, X, Sun, Moon, Save
 } from "lucide-react";
 import { useTheme } from "@/components/theme-provider";
 
@@ -126,47 +126,17 @@ export default function AdminPage() {
                     </div>
                   </div>
                   {expandedDoc === doc.id && (
-                    <div className="border-t px-4 py-3 space-y-3">
-                      <div className="grid grid-cols-2 gap-4 text-sm">
-                        <div>
-                          <span className="text-muted-foreground">Uploaded:</span>{" "}
-                          {new Date(doc.uploadedAt).toLocaleDateString()}
-                        </div>
-                        <div>
-                          <span className="text-muted-foreground">Access:</span>{" "}
-                          {doc.adminOnly ? "Admin only" : doc.allowedDomain ? `@${doc.allowedDomain}` : doc.allowedUsers?.length ? `${doc.allowedUsers.length} users` : "All users"}
-                        </div>
-                      </div>
-                      {doc.allowedUsers && doc.allowedUsers.length > 0 && (
-                        <div className="text-xs text-muted-foreground">
-                          <span className="font-medium">Allowed users:</span> {doc.allowedUsers.join(", ")}
-                        </div>
-                      )}
-                      <div className="flex gap-2">
-                        <button
-                          data-testid={`button-reindex-${doc.id}`}
-                          onClick={() => reindexMutation.mutate(doc.id)}
-                          disabled={reindexMutation.isPending}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md border hover:bg-muted transition-colors disabled:opacity-50"
-                        >
-                          <RefreshCw className={`w-3.5 h-3.5 ${reindexMutation.isPending ? "animate-spin" : ""}`} />
-                          Re-index
-                        </button>
-                        <button
-                          data-testid={`button-delete-${doc.id}`}
-                          onClick={() => {
-                            if (confirm("Delete this document and all its chunks?")) {
-                              deleteMutation.mutate(doc.id);
-                            }
-                          }}
-                          disabled={deleteMutation.isPending}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md border border-destructive/30 text-destructive hover:bg-destructive/10 transition-colors disabled:opacity-50"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                          Delete
-                        </button>
-                      </div>
-                    </div>
+                    <DocumentAccessEditor
+                      doc={doc}
+                      onReindex={() => reindexMutation.mutate(doc.id)}
+                      onDelete={() => {
+                        if (confirm("Delete this document and all its chunks?")) {
+                          deleteMutation.mutate(doc.id);
+                        }
+                      }}
+                      reindexPending={reindexMutation.isPending}
+                      deletePending={deleteMutation.isPending}
+                    />
                   )}
                 </div>
               ))}
@@ -370,6 +340,131 @@ function UploadSection() {
           )}
         </div>
       </form>
+    </div>
+  );
+}
+
+function DocumentAccessEditor({
+  doc,
+  onReindex,
+  onDelete,
+  reindexPending,
+  deletePending,
+}: {
+  doc: Document;
+  onReindex: () => void;
+  onDelete: () => void;
+  reindexPending: boolean;
+  deletePending: boolean;
+}) {
+  const { toast } = useToast();
+  const [editAdminOnly, setEditAdminOnly] = useState(doc.adminOnly);
+  const [editDomain, setEditDomain] = useState(doc.allowedDomain || "");
+  const [editUsers, setEditUsers] = useState((doc.allowedUsers || []).join(", "));
+  const [saving, setSaving] = useState(false);
+
+  const hasChanges =
+    editAdminOnly !== doc.adminOnly ||
+    editDomain !== (doc.allowedDomain || "") ||
+    editUsers !== (doc.allowedUsers || []).join(", ");
+
+  async function handleSaveAccess() {
+    setSaving(true);
+    try {
+      const allowedUsers = editUsers
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+      await apiRequest("PATCH", `/api/documents/${doc.id}`, {
+        adminOnly: editAdminOnly,
+        allowedDomain: editDomain.trim() || null,
+        allowedUsers,
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/documents"] });
+      toast({ title: "Access settings updated" });
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="border-t px-4 py-3 space-y-4">
+      <div className="text-sm text-muted-foreground">
+        Uploaded: {new Date(doc.uploadedAt).toLocaleDateString()} · {doc.chunkCount} chunks
+      </div>
+
+      <div className="space-y-3">
+        <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Access Control</h3>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div className="flex items-center gap-2">
+            <input
+              data-testid={`input-edit-admin-only-${doc.id}`}
+              type="checkbox"
+              id={`editAdminOnly-${doc.id}`}
+              checked={editAdminOnly}
+              onChange={(e) => setEditAdminOnly(e.target.checked)}
+              className="rounded border-input"
+            />
+            <label htmlFor={`editAdminOnly-${doc.id}`} className="text-sm">Admin only</label>
+          </div>
+          <div>
+            <label className="text-xs font-medium mb-1 block">Allowed domain</label>
+            <input
+              data-testid={`input-edit-domain-${doc.id}`}
+              type="text"
+              value={editDomain}
+              onChange={(e) => setEditDomain(e.target.value)}
+              className="w-full px-3 py-1.5 rounded-lg border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              placeholder="e.g. company.com"
+            />
+          </div>
+          <div>
+            <label className="text-xs font-medium mb-1 block">Allowed users (emails)</label>
+            <input
+              data-testid={`input-edit-users-${doc.id}`}
+              type="text"
+              value={editUsers}
+              onChange={(e) => setEditUsers(e.target.value)}
+              className="w-full px-3 py-1.5 rounded-lg border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              placeholder="user@co.com, user2@co.com"
+            />
+          </div>
+        </div>
+      </div>
+
+      <div className="flex gap-2">
+        {hasChanges && (
+          <button
+            data-testid={`button-save-access-${doc.id}`}
+            onClick={handleSaveAccess}
+            disabled={saving}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md bg-primary text-primary-foreground hover:opacity-90 transition-opacity disabled:opacity-50"
+          >
+            {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+            Save Access
+          </button>
+        )}
+        <button
+          data-testid={`button-reindex-${doc.id}`}
+          onClick={onReindex}
+          disabled={reindexPending}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md border hover:bg-muted transition-colors disabled:opacity-50"
+        >
+          <RefreshCw className={`w-3.5 h-3.5 ${reindexPending ? "animate-spin" : ""}`} />
+          Re-index
+        </button>
+        <button
+          data-testid={`button-delete-${doc.id}`}
+          onClick={onDelete}
+          disabled={deletePending}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md border border-destructive/30 text-destructive hover:bg-destructive/10 transition-colors disabled:opacity-50"
+        >
+          <Trash2 className="w-3.5 h-3.5" />
+          Delete
+        </button>
+      </div>
     </div>
   );
 }
