@@ -6,6 +6,7 @@ import { Send, FileText, BookOpen, LogOut, Shield, Settings, Loader2, Plus, Mess
 import { useLocation, Link } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 import { useTheme } from "@/components/theme-provider";
+import ReactMarkdown from "react-markdown";
 
 type Citation = {
   documentId: number;
@@ -332,13 +333,15 @@ export default function ChatPage() {
                   ) : (
                     <>
                       <div className="bg-card border rounded-2xl rounded-bl-md px-4 py-3">
-                        <p className="text-sm whitespace-pre-wrap leading-relaxed prose prose-sm max-w-none" data-testid={`text-assistant-message-${i}`}>
-                          {msg.content || (isStreaming && i === messages.length - 1 ? (
-                            <span className="flex items-center gap-2 text-muted-foreground">
-                              <Loader2 className="w-3.5 h-3.5 animate-spin" /> Thinking...
-                            </span>
-                          ) : null)}
-                        </p>
+                        {msg.content ? (
+                          <div className="text-sm leading-relaxed prose prose-sm max-w-none dark:prose-invert prose-headings:mt-3 prose-headings:mb-1 prose-p:my-1 prose-ul:my-1 prose-ol:my-1 prose-li:my-0.5 prose-strong:text-foreground" data-testid={`text-assistant-message-${i}`}>
+                            <ReactMarkdown>{msg.content}</ReactMarkdown>
+                          </div>
+                        ) : (isStreaming && i === messages.length - 1 ? (
+                          <span className="flex items-center gap-2 text-muted-foreground text-sm">
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" /> Thinking...
+                          </span>
+                        ) : null)}
                       </div>
                       {msg.citations && msg.citations.length > 0 && (
                         <div className="flex flex-wrap gap-1.5 ml-1">
