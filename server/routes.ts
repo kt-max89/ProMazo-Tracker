@@ -7,6 +7,7 @@ import { storage } from "./storage";
 import { setupAuth, requireAuth, requireAdmin } from "./auth";
 import { registerSchema, loginSchema } from "@shared/schema";
 import { chunkText, hashChunk, getEmbedding, getEmbeddings, streamChatCompletion } from "./openai";
+import { listDriveFiles, getDriveFileContent } from "./google-drive";
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
@@ -220,6 +221,63 @@ export async function registerRoutes(
       await storage.deleteCitationsByDocumentId(docId);
       await storage.deleteDocument(docId);
       return res.json({ message: "Deleted" });
+    } catch (err: any) {
+      return res.status(500).json({ message: err.message });
+    }
+  });
+
+  // Google Drive integration routes
+  app.get("/api/drive/files", requireAdmin, async (req, res) => {
+    try {
+      const query = req.query.q as string | undefined;
+      const pageToken = req.query.pageToken as string | undefined;
+      const result = await listDriveFiles(query, pageToken);
+      return res.json(result);
+    } catch (err: any) {
+      return res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/drive/import", requireAdmin, async (req, res) => {
+    try {
+      const { fileId, mimeType, adminOnly, allowedDomain, allowedUsers } = req.body;
+      if (!fileId || !mimeType) {
+        return res.status(400).json({ message: "fileId and mimeType are required" });
+      }
+
+      const { text, name } = await getDriveFileContent(fileId, mimeType);
+
+      if (!text || text.trim().length < 50) {
+        return res.status(400).json({
+          message: "Extracted text is too short or empty. The file may be image-based or corrupted."
+        });
+      }
+
+      const textChunks = chunkText(text);
+      const hashes = textChunks.map(hashChunk);
+      const embeddings = await getEmbeddings(textChunks);
+
+      const doc = await storage.createDocument({
+        title: name,
+        filename: name,
+        adminOnly: adminOnly || false,
+        allowedUsers: allowedUsers || [],
+        allowedDomain: allowedDomain || null,
+        chunkCount: textChunks.length,
+        uploadedBy: req.user!.id,
+        uploadedAt: new Date().toISOString(),
+      });
+
+      const chunkData = textChunks.map((ct, i) => ({
+        documentId: doc.id,
+        chunkIndex: i,
+        chunkText: ct,
+        chunkHash: hashes[i],
+        embedding: embeddings[i],
+      }));
+
+      await storage.insertChunks(chunkData);
+      return res.json(doc);
     } catch (err: any) {
       return res.status(500).json({ message: err.message });
     }

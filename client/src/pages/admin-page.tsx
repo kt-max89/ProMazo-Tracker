@@ -7,7 +7,7 @@ import { Link } from "wouter";
 import { 
   Upload, FileText, Trash2, RefreshCw, ArrowLeft, Shield, 
   Users, Lock, Globe, ChevronDown, ChevronUp, Loader2,
-  CheckCircle, XCircle, X, Sun, Moon, Save
+  CheckCircle, XCircle, X, Sun, Moon, Save, Search, Download, HardDrive
 } from "lucide-react";
 import { useTheme } from "@/components/theme-provider";
 
@@ -75,6 +75,7 @@ export default function AdminPage() {
 
       <div className="max-w-4xl mx-auto p-6 space-y-6">
         <UploadSection />
+        <DriveImportSection />
 
         <div>
           <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-3">
@@ -340,6 +341,225 @@ function UploadSection() {
           )}
         </div>
       </form>
+    </div>
+  );
+}
+
+type DriveFile = {
+  id: string;
+  name: string;
+  mimeType: string;
+  modifiedTime?: string;
+  size?: string;
+};
+
+function DriveImportSection() {
+  const { toast } = useToast();
+  const [searchQuery, setSearchQuery] = useState("");
+  const [files, setFiles] = useState<DriveFile[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [searched, setSearched] = useState(false);
+  const [importingId, setImportingId] = useState<string | null>(null);
+  const [nextPageToken, setNextPageToken] = useState<string | undefined>();
+  const [adminOnly, setAdminOnly] = useState(false);
+  const [allowedDomain, setAllowedDomain] = useState("");
+  const [allowedUsersStr, setAllowedUsersStr] = useState("");
+
+  async function searchFiles() {
+    setLoading(true);
+    setSearched(true);
+    try {
+      const params = new URLSearchParams();
+      if (searchQuery.trim()) params.set("q", searchQuery.trim());
+      const res = await fetch(`/api/drive/files?${params.toString()}`, { credentials: "include" });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.message);
+      }
+      const data = await res.json();
+      setFiles(data.files || []);
+      setNextPageToken(data.nextPageToken);
+    } catch (err: any) {
+      toast({ title: "Error loading Drive files", description: err.message, variant: "destructive" });
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function loadMore() {
+    if (!nextPageToken) return;
+    setLoading(true);
+    try {
+      const params = new URLSearchParams();
+      if (searchQuery.trim()) params.set("q", searchQuery.trim());
+      params.set("pageToken", nextPageToken);
+      const res = await fetch(`/api/drive/files?${params.toString()}`, { credentials: "include" });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.message);
+      }
+      const data = await res.json();
+      setFiles(prev => [...prev, ...(data.files || [])]);
+      setNextPageToken(data.nextPageToken);
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function importFile(file: DriveFile) {
+    setImportingId(file.id);
+    try {
+      const res = await fetch("/api/drive/import", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fileId: file.id,
+          mimeType: file.mimeType,
+          adminOnly,
+          allowedDomain: allowedDomain.trim() || null,
+          allowedUsers: allowedUsersStr.trim()
+            ? allowedUsersStr.split(",").map(s => s.trim()).filter(Boolean)
+            : [],
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.message);
+      }
+      queryClient.invalidateQueries({ queryKey: ["/api/documents"] });
+      toast({ title: `"${file.name}" imported and indexed` });
+    } catch (err: any) {
+      toast({ title: "Import failed", description: err.message, variant: "destructive" });
+    } finally {
+      setImportingId(null);
+    }
+  }
+
+  function getMimeLabel(mimeType: string) {
+    if (mimeType === "application/vnd.google-apps.document") return "Google Doc";
+    if (mimeType === "application/pdf") return "PDF";
+    if (mimeType === "text/plain") return "Text";
+    if (mimeType === "text/markdown") return "Markdown";
+    return mimeType;
+  }
+
+  return (
+    <div className="border rounded-lg bg-card p-5">
+      <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-4 flex items-center gap-2">
+        <HardDrive className="w-4 h-4" />
+        Import from Google Drive
+      </h2>
+
+      <div className="flex gap-2 mb-4">
+        <input
+          data-testid="input-drive-search"
+          type="text"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && searchFiles()}
+          placeholder="Search your Drive files..."
+          className="flex-1 px-3 py-2 rounded-lg border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+        />
+        <button
+          data-testid="button-drive-search"
+          onClick={searchFiles}
+          disabled={loading}
+          className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 disabled:opacity-50 transition-opacity"
+        >
+          {loading && !importingId ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
+          Browse
+        </button>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+        <div className="flex items-center gap-2">
+          <input
+            data-testid="input-drive-admin-only"
+            type="checkbox"
+            id="driveAdminOnly"
+            checked={adminOnly}
+            onChange={(e) => setAdminOnly(e.target.checked)}
+            className="rounded border-input"
+          />
+          <label htmlFor="driveAdminOnly" className="text-sm">Admin only</label>
+        </div>
+        <div>
+          <label className="text-sm font-medium mb-1.5 block">Allowed domain</label>
+          <input
+            data-testid="input-drive-allowed-domain"
+            type="text"
+            value={allowedDomain}
+            onChange={(e) => setAllowedDomain(e.target.value)}
+            className="w-full px-3 py-2 rounded-lg border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+            placeholder="e.g. company.com"
+          />
+        </div>
+        <div>
+          <label className="text-sm font-medium mb-1.5 block">Allowed users (emails)</label>
+          <input
+            data-testid="input-drive-allowed-users"
+            type="text"
+            value={allowedUsersStr}
+            onChange={(e) => setAllowedUsersStr(e.target.value)}
+            className="w-full px-3 py-2 rounded-lg border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+            placeholder="user@co.com, user2@co.com"
+          />
+        </div>
+      </div>
+
+      {searched && files.length === 0 && !loading && (
+        <p className="text-sm text-muted-foreground text-center py-4">No compatible files found. Supported: PDF, Text, Markdown, Google Docs.</p>
+      )}
+
+      {files.length > 0 && (
+        <div className="space-y-1.5 max-h-64 overflow-y-auto">
+          {files.map((file) => (
+            <div
+              key={file.id}
+              data-testid={`drive-file-${file.id}`}
+              className="flex items-center justify-between px-3 py-2 rounded-md bg-muted/40 text-sm"
+            >
+              <div className="flex items-center gap-2 min-w-0">
+                <FileText className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                <span className="truncate">{file.name}</span>
+                <span className="text-xs text-muted-foreground shrink-0">({getMimeLabel(file.mimeType)})</span>
+                {file.modifiedTime && (
+                  <span className="text-xs text-muted-foreground shrink-0">
+                    {new Date(file.modifiedTime).toLocaleDateString()}
+                  </span>
+                )}
+              </div>
+              <button
+                data-testid={`button-import-${file.id}`}
+                onClick={() => importFile(file)}
+                disabled={importingId === file.id}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-md bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-50 transition-opacity shrink-0 ml-2"
+              >
+                {importingId === file.id ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Download className="w-3.5 h-3.5" />
+                )}
+                Import
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {nextPageToken && (
+        <button
+          data-testid="button-drive-load-more"
+          onClick={loadMore}
+          disabled={loading}
+          className="mt-2 text-xs text-primary hover:underline disabled:opacity-50"
+        >
+          Load more files...
+        </button>
+      )}
     </div>
   );
 }

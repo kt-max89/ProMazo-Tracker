@@ -13,7 +13,8 @@ RAG-powered document Q&A app that lets users upload documents and ask questions 
 
 ## Key Features
 - Document upload & management (admin only)
-- AI-powered Q&A with streaming responses and citations
+- Google Drive integration for importing documents directly
+- AI-powered Q&A with streaming responses (markdown rendered) and citations
 - Access control (per-user, per-domain, admin-only)
 - Dark mode with localStorage persistence
 - Persistent chat sessions with history sidebar
@@ -24,6 +25,7 @@ RAG-powered document Q&A app that lets users upload documents and ask questions 
 - `server/routes.ts` — Express API routes
 - `server/openai.ts` — OpenAI integration (embeddings, streaming chat, chunking)
 - `server/auth.ts` — Passport.js auth setup
+- `server/google-drive.ts` — Google Drive API integration (via Replit Connectors)
 - `client/src/App.tsx` — Frontend routing and providers
 - `client/src/pages/` — Page components (chat, admin, history, auth)
 - `client/src/components/theme-provider.tsx` — Dark/light mode provider
