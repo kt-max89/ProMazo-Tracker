@@ -7,7 +7,7 @@ import { Link } from "wouter";
 import { 
   Upload, FileText, Trash2, RefreshCw, ArrowLeft, Shield, 
   Users, Lock, Globe, ChevronDown, ChevronUp, Loader2,
-  CheckCircle, XCircle, X, Sun, Moon, Save, Search, Download, HardDrive
+  CheckCircle, XCircle, X, Sun, Moon, Save, Search, Download, HardDrive, FolderOpen
 } from "lucide-react";
 import { useTheme } from "@/components/theme-provider";
 
@@ -353,10 +353,24 @@ type DriveFile = {
   size?: string;
 };
 
+type DriveFolder = {
+  id: string;
+  name: string;
+  modifiedTime?: string;
+};
+
+type FolderImportResult = {
+  name: string;
+  status: string;
+  error?: string;
+};
+
 function DriveImportSection() {
   const { toast } = useToast();
+  const [mode, setMode] = useState<"files" | "folders">("files");
   const [searchQuery, setSearchQuery] = useState("");
   const [files, setFiles] = useState<DriveFile[]>([]);
+  const [folders, setFolders] = useState<DriveFolder[]>([]);
   const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);
   const [importingId, setImportingId] = useState<string | null>(null);
@@ -364,23 +378,41 @@ function DriveImportSection() {
   const [adminOnly, setAdminOnly] = useState(false);
   const [allowedDomain, setAllowedDomain] = useState("");
   const [allowedUsersStr, setAllowedUsersStr] = useState("");
+  const [folderImporting, setFolderImporting] = useState(false);
+  const [folderResults, setFolderResults] = useState<FolderImportResult[] | null>(null);
 
-  async function searchFiles() {
+  function switchMode(newMode: "files" | "folders") {
+    setMode(newMode);
+    setSearchQuery("");
+    setFiles([]);
+    setFolders([]);
+    setSearched(false);
+    setNextPageToken(undefined);
+    setFolderResults(null);
+  }
+
+  async function search() {
     setLoading(true);
     setSearched(true);
+    setFolderResults(null);
     try {
       const params = new URLSearchParams();
       if (searchQuery.trim()) params.set("q", searchQuery.trim());
-      const res = await fetch(`/api/drive/files?${params.toString()}`, { credentials: "include" });
+      const endpoint = mode === "files" ? "/api/drive/files" : "/api/drive/folders";
+      const res = await fetch(`${endpoint}?${params.toString()}`, { credentials: "include" });
       if (!res.ok) {
         const err = await res.json();
         throw new Error(err.message);
       }
       const data = await res.json();
-      setFiles(data.files || []);
+      if (mode === "files") {
+        setFiles(data.files || []);
+      } else {
+        setFolders(data.folders || []);
+      }
       setNextPageToken(data.nextPageToken);
     } catch (err: any) {
-      toast({ title: "Error loading Drive files", description: err.message, variant: "destructive" });
+      toast({ title: `Error loading Drive ${mode}`, description: err.message, variant: "destructive" });
     } finally {
       setLoading(false);
     }
@@ -393,13 +425,18 @@ function DriveImportSection() {
       const params = new URLSearchParams();
       if (searchQuery.trim()) params.set("q", searchQuery.trim());
       params.set("pageToken", nextPageToken);
-      const res = await fetch(`/api/drive/files?${params.toString()}`, { credentials: "include" });
+      const endpoint = mode === "files" ? "/api/drive/files" : "/api/drive/folders";
+      const res = await fetch(`${endpoint}?${params.toString()}`, { credentials: "include" });
       if (!res.ok) {
         const err = await res.json();
         throw new Error(err.message);
       }
       const data = await res.json();
-      setFiles(prev => [...prev, ...(data.files || [])]);
+      if (mode === "files") {
+        setFiles(prev => [...prev, ...(data.files || [])]);
+      } else {
+        setFolders(prev => [...prev, ...(data.folders || [])]);
+      }
       setNextPageToken(data.nextPageToken);
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });
@@ -438,6 +475,41 @@ function DriveImportSection() {
     }
   }
 
+  async function importFolder(folder: DriveFolder) {
+    setFolderImporting(true);
+    setImportingId(folder.id);
+    setFolderResults(null);
+    try {
+      const res = await fetch("/api/drive/import-folder", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ folderId: folder.id }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.message);
+      }
+      const data = await res.json();
+      setFolderResults(data.results || []);
+      queryClient.invalidateQueries({ queryKey: ["/api/documents"] });
+      const parts = [];
+      if (data.imported > 0) parts.push(`${data.imported} imported`);
+      if (data.skipped > 0) parts.push(`${data.skipped} skipped`);
+      if (data.failed > 0) parts.push(`${data.failed} failed`);
+      toast({
+        title: `Folder "${folder.name}" processed`,
+        description: parts.join(", ") || "No files processed",
+        variant: data.failed > 0 ? "destructive" : undefined,
+      });
+    } catch (err: any) {
+      toast({ title: "Folder import failed", description: err.message, variant: "destructive" });
+    } finally {
+      setFolderImporting(false);
+      setImportingId(null);
+    }
+  }
+
   function getMimeLabel(mimeType: string) {
     if (mimeType === "application/vnd.google-apps.document") return "Google Doc";
     if (mimeType === "application/pdf") return "PDF";
@@ -453,20 +525,45 @@ function DriveImportSection() {
         Import from Google Drive
       </h2>
 
+      <div className="flex gap-1 mb-4 border-b">
+        <button
+          data-testid="tab-drive-files"
+          onClick={() => switchMode("files")}
+          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+            mode === "files"
+              ? "border-primary text-primary"
+              : "border-transparent text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          <span className="flex items-center gap-1.5"><FileText className="w-3.5 h-3.5" /> Files</span>
+        </button>
+        <button
+          data-testid="tab-drive-folders"
+          onClick={() => switchMode("folders")}
+          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+            mode === "folders"
+              ? "border-primary text-primary"
+              : "border-transparent text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          <span className="flex items-center gap-1.5"><FolderOpen className="w-3.5 h-3.5" /> Folders</span>
+        </button>
+      </div>
+
       <div className="flex gap-2 mb-4">
         <input
           data-testid="input-drive-search"
           type="text"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && searchFiles()}
-          placeholder="Search your Drive files..."
+          onKeyDown={(e) => e.key === "Enter" && search()}
+          placeholder={mode === "files" ? "Search your Drive files..." : "Search your Drive folders..."}
           className="flex-1 px-3 py-2 rounded-lg border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
         />
         <button
           data-testid="button-drive-search"
-          onClick={searchFiles}
-          disabled={loading}
+          onClick={search}
+          disabled={loading && !importingId}
           className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 disabled:opacity-50 transition-opacity"
         >
           {loading && !importingId ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
@@ -474,47 +571,59 @@ function DriveImportSection() {
         </button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-        <div className="flex items-center gap-2">
-          <input
-            data-testid="input-drive-admin-only"
-            type="checkbox"
-            id="driveAdminOnly"
-            checked={adminOnly}
-            onChange={(e) => setAdminOnly(e.target.checked)}
-            className="rounded border-input"
-          />
-          <label htmlFor="driveAdminOnly" className="text-sm">Admin only</label>
+      {mode === "files" && (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+          <div className="flex items-center gap-2">
+            <input
+              data-testid="input-drive-admin-only"
+              type="checkbox"
+              id="driveAdminOnly"
+              checked={adminOnly}
+              onChange={(e) => setAdminOnly(e.target.checked)}
+              className="rounded border-input"
+            />
+            <label htmlFor="driveAdminOnly" className="text-sm">Admin only</label>
+          </div>
+          <div>
+            <label className="text-sm font-medium mb-1.5 block">Allowed domain</label>
+            <input
+              data-testid="input-drive-allowed-domain"
+              type="text"
+              value={allowedDomain}
+              onChange={(e) => setAllowedDomain(e.target.value)}
+              className="w-full px-3 py-2 rounded-lg border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              placeholder="e.g. company.com"
+            />
+          </div>
+          <div>
+            <label className="text-sm font-medium mb-1.5 block">Allowed users (emails)</label>
+            <input
+              data-testid="input-drive-allowed-users"
+              type="text"
+              value={allowedUsersStr}
+              onChange={(e) => setAllowedUsersStr(e.target.value)}
+              className="w-full px-3 py-2 rounded-lg border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              placeholder="user@co.com, user2@co.com"
+            />
+          </div>
         </div>
-        <div>
-          <label className="text-sm font-medium mb-1.5 block">Allowed domain</label>
-          <input
-            data-testid="input-drive-allowed-domain"
-            type="text"
-            value={allowedDomain}
-            onChange={(e) => setAllowedDomain(e.target.value)}
-            className="w-full px-3 py-2 rounded-lg border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-            placeholder="e.g. company.com"
-          />
-        </div>
-        <div>
-          <label className="text-sm font-medium mb-1.5 block">Allowed users (emails)</label>
-          <input
-            data-testid="input-drive-allowed-users"
-            type="text"
-            value={allowedUsersStr}
-            onChange={(e) => setAllowedUsersStr(e.target.value)}
-            className="w-full px-3 py-2 rounded-lg border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-            placeholder="user@co.com, user2@co.com"
-          />
-        </div>
-      </div>
+      )}
 
-      {searched && files.length === 0 && !loading && (
+      {mode === "folders" && searched && !folderImporting && (
+        <div className="mb-4 px-3 py-2 rounded-lg bg-muted/40 text-xs text-muted-foreground">
+          Folder imports automatically sync access controls from Google Drive sharing permissions. Users who have access to a file in Drive will have access in this app.
+        </div>
+      )}
+
+      {searched && !loading && mode === "files" && files.length === 0 && (
         <p className="text-sm text-muted-foreground text-center py-4">No compatible files found. Supported: PDF, Text, Markdown, Google Docs.</p>
       )}
 
-      {files.length > 0 && (
+      {searched && !loading && mode === "folders" && folders.length === 0 && !folderImporting && (
+        <p className="text-sm text-muted-foreground text-center py-4">No folders found.</p>
+      )}
+
+      {mode === "files" && files.length > 0 && (
         <div className="space-y-1.5 max-h-64 overflow-y-auto">
           {files.map((file) => (
             <div
@@ -550,14 +659,74 @@ function DriveImportSection() {
         </div>
       )}
 
-      {nextPageToken && (
+      {mode === "folders" && folders.length > 0 && (
+        <div className="space-y-1.5 max-h-64 overflow-y-auto">
+          {folders.map((folder) => (
+            <div
+              key={folder.id}
+              data-testid={`drive-folder-${folder.id}`}
+              className="flex items-center justify-between px-3 py-2 rounded-md bg-muted/40 text-sm"
+            >
+              <div className="flex items-center gap-2 min-w-0">
+                <FolderOpen className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                <span className="truncate">{folder.name}</span>
+                {folder.modifiedTime && (
+                  <span className="text-xs text-muted-foreground shrink-0">
+                    {new Date(folder.modifiedTime).toLocaleDateString()}
+                  </span>
+                )}
+              </div>
+              <button
+                data-testid={`button-import-folder-${folder.id}`}
+                onClick={() => importFolder(folder)}
+                disabled={folderImporting}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-md bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-50 transition-opacity shrink-0 ml-2"
+              >
+                {importingId === folder.id && folderImporting ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Download className="w-3.5 h-3.5" />
+                )}
+                Import All Files
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {folderImporting && (
+        <div className="mt-3 flex items-center gap-2 text-sm text-muted-foreground">
+          <Loader2 className="w-4 h-4 animate-spin" />
+          Importing folder contents... This may take a minute for large folders.
+        </div>
+      )}
+
+      {folderResults && folderResults.length > 0 && (
+        <div className="mt-3 space-y-1">
+          <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">Import Results</h3>
+          <div className="space-y-1 max-h-48 overflow-y-auto">
+            {folderResults.map((r, i) => (
+              <div key={i} className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-muted/40 text-xs">
+                {r.status === "imported" && <CheckCircle className="w-3.5 h-3.5 text-green-500 shrink-0" />}
+                {r.status === "skipped" && <XCircle className="w-3.5 h-3.5 text-yellow-500 shrink-0" />}
+                {r.status === "failed" && <XCircle className="w-3.5 h-3.5 text-destructive shrink-0" />}
+                <span className="truncate">{r.name}</span>
+                <span className="text-muted-foreground shrink-0">— {r.status}</span>
+                {r.error && <span className="text-muted-foreground truncate" title={r.error}>({r.error})</span>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {nextPageToken && !folderImporting && (
         <button
           data-testid="button-drive-load-more"
           onClick={loadMore}
           disabled={loading}
           className="mt-2 text-xs text-primary hover:underline disabled:opacity-50"
         >
-          Load more files...
+          Load more...
         </button>
       )}
     </div>

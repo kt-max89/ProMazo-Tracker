@@ -7,7 +7,7 @@ import { storage } from "./storage";
 import { setupAuth, requireAuth, requireAdmin } from "./auth";
 import { registerSchema, loginSchema } from "@shared/schema";
 import { chunkText, hashChunk, getEmbedding, getEmbeddings, streamChatCompletion } from "./openai";
-import { listDriveFiles, getDriveFileContent } from "./google-drive";
+import { listDriveFiles, listDriveFolders, listFilesInFolder, getFilePermissions, getDriveFileContent } from "./google-drive";
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
@@ -278,6 +278,99 @@ export async function registerRoutes(
 
       await storage.insertChunks(chunkData);
       return res.json(doc);
+    } catch (err: any) {
+      return res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/drive/folders", requireAdmin, async (req, res) => {
+    try {
+      const query = req.query.q as string | undefined;
+      const pageToken = req.query.pageToken as string | undefined;
+      const result = await listDriveFolders(query, pageToken);
+      return res.json(result);
+    } catch (err: any) {
+      return res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/drive/import-folder", requireAdmin, async (req, res) => {
+    try {
+      const { folderId } = req.body;
+      if (!folderId) {
+        return res.status(400).json({ message: "folderId is required" });
+      }
+
+      const files = await listFilesInFolder(folderId);
+      if (files.length === 0) {
+        return res.status(400).json({ message: "No compatible files found in this folder" });
+      }
+
+      const results: { name: string; status: string; error?: string }[] = [];
+
+      for (const file of files) {
+        try {
+          const { text, name } = await getDriveFileContent(file.id, file.mimeType);
+
+          if (!text || text.trim().length < 50) {
+            results.push({ name: file.name, status: "skipped", error: "Text too short or empty" });
+            continue;
+          }
+
+          const perms = await getFilePermissions(file.id);
+
+          const textChunks = chunkText(text);
+          const hashes = textChunks.map(hashChunk);
+          const embeddings = await getEmbeddings(textChunks);
+
+          let docAdminOnly = false;
+          let docAllowedUsers: string[] = [];
+          let docAllowedDomain: string | null = null;
+
+          if (perms.isPublic) {
+            docAdminOnly = false;
+            docAllowedUsers = [];
+            docAllowedDomain = null;
+          } else if (perms.domain) {
+            docAllowedDomain = perms.domain;
+            docAllowedUsers = perms.userEmails;
+          } else if (perms.userEmails.length > 0) {
+            docAllowedUsers = perms.userEmails;
+          } else {
+            docAdminOnly = true;
+          }
+
+          const doc = await storage.createDocument({
+            title: name,
+            filename: name,
+            adminOnly: docAdminOnly,
+            allowedUsers: docAllowedUsers,
+            allowedDomain: docAllowedDomain,
+            chunkCount: textChunks.length,
+            uploadedBy: req.user!.id,
+            uploadedAt: new Date().toISOString(),
+          });
+
+          const chunkData = textChunks.map((ct, i) => ({
+            documentId: doc.id,
+            chunkIndex: i,
+            chunkText: ct,
+            chunkHash: hashes[i],
+            embedding: embeddings[i],
+          }));
+
+          await storage.insertChunks(chunkData);
+          results.push({ name: file.name, status: "imported" });
+        } catch (err: any) {
+          results.push({ name: file.name, status: "failed", error: err.message });
+        }
+      }
+
+      const imported = results.filter(r => r.status === "imported").length;
+      const skipped = results.filter(r => r.status === "skipped").length;
+      const failed = results.filter(r => r.status === "failed").length;
+
+      return res.json({ imported, skipped, failed, total: files.length, results });
     } catch (err: any) {
       return res.status(500).json({ message: err.message });
     }
