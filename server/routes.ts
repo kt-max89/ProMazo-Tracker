@@ -531,6 +531,16 @@ export async function registerRoutes(
     }
   });
 
+  // Users list (for assignee dropdowns)
+  app.get("/api/users", requireAuth, async (req, res) => {
+    try {
+      const allUsers = await storage.getAllUsers();
+      return res.json(allUsers.map(({ passwordHash: _, ...u }) => u));
+    } catch (err: any) {
+      return res.status(500).json({ message: err.message });
+    }
+  });
+
   // Task routes
   app.get("/api/tasks", requireAuth, async (req, res) => {
     try {

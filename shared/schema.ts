@@ -99,6 +99,7 @@ export const tasks = pgTable("tasks", {
   updatedAt: text("updated_at").notNull().default(sql`now()::text`),
   createdBy: integer("created_by").references(() => users.id),
   archivedAt: text("archived_at"),
+  assignedTo: integer("assigned_to").references(() => users.id),
 });
 
 export const insertTaskSchema = createInsertSchema(tasks).omit({
