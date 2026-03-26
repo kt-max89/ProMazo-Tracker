@@ -18,16 +18,18 @@ RAG-powered document Q&A app that lets users upload documents and ask questions 
 - Access control (per-user, per-domain, admin-only)
 - Dark mode with localStorage persistence
 - Persistent chat sessions with history sidebar
+- Task Tracker (Notion-style kanban board with full CRUD, archive/restore)
 
 ## Architecture
 - `shared/schema.ts` — Single source of truth for DB schema and types
 - `server/storage.ts` — Database operations (Drizzle ORM)
 - `server/routes.ts` — Express API routes
+- `server/taskService.ts` — Task business logic (listTasks, createTask, updateTask, archiveTask, restoreTask)
 - `server/openai.ts` — OpenAI integration (embeddings, streaming chat, chunking)
 - `server/auth.ts` — Passport.js auth setup
 - `server/google-drive.ts` — Google Drive API integration (via Replit Connectors)
 - `client/src/App.tsx` — Frontend routing and providers
-- `client/src/pages/` — Page components (chat, admin, history, auth)
+- `client/src/pages/` — Page components (chat, admin, history, auth, tasks)
 - `client/src/components/theme-provider.tsx` — Dark/light mode provider
 
 ## Database Tables
@@ -37,6 +39,14 @@ RAG-powered document Q&A app that lets users upload documents and ask questions 
 - `citations` — tracks which chunks answered which queries
 - `chat_sessions` — persistent chat conversations per user
 - `chat_messages` — individual messages within chat sessions
+- `tasks` — task tracker (title, description, status, blocked_reason, is_archived, created_by, archived_at)
+
+## Task Tracker API
+- `GET /api/tasks` — list open tasks (is_archived=false); `?archived=true` for archived
+- `POST /api/tasks` — create task
+- `PATCH /api/tasks/:id` — update task
+- `POST /api/tasks/:id/archive` — soft-archive task
+- `POST /api/tasks/:id/restore` — restore archived task
 
 ## Running
 - `npm run dev` starts Express + Vite on the same port

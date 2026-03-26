@@ -9,6 +9,7 @@ import AuthPage from "@/pages/auth-page";
 import ChatPage from "@/pages/chat-page";
 import AdminPage from "@/pages/admin-page";
 import HistoryPage from "@/pages/history-page";
+import TasksPage from "@/pages/tasks-page";
 import NotFound from "@/pages/not-found";
 import { Loader2 } from "lucide-react";
 
@@ -46,6 +47,7 @@ function Router() {
       <Route path="/auth" component={AuthPage} />
       <Route path="/admin" component={() => <AdminRoute component={AdminPage} />} />
       <Route path="/history" component={() => <ProtectedRoute component={HistoryPage} />} />
+      <Route path="/tasks" component={() => <ProtectedRoute component={TasksPage} />} />
       <Route component={NotFound} />
     </Switch>
   );

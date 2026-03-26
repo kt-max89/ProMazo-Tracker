@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { useAuth } from "@/lib/auth";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { Send, FileText, BookOpen, LogOut, Shield, Settings, Loader2, Plus, MessageSquare, Trash2, Sun, Moon, PanelLeftClose, PanelLeft } from "lucide-react";
+import { Send, FileText, BookOpen, LogOut, Shield, Settings, Loader2, Plus, MessageSquare, Trash2, Sun, Moon, PanelLeftClose, PanelLeft, LayoutList } from "lucide-react";
 import { useLocation, Link } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 import { useTheme } from "@/components/theme-provider";
@@ -293,6 +293,11 @@ export default function ChatPage() {
                 </button>
               </Link>
             )}
+            <Link href="/tasks">
+              <button data-testid="link-tasks" className="p-2 rounded-lg hover:bg-muted transition-colors" title="Task Tracker">
+                <LayoutList className="w-4 h-4" />
+              </button>
+            </Link>
             <Link href="/history">
               <button data-testid="link-history" className="p-2 rounded-lg hover:bg-muted transition-colors" title="Citation History">
                 <BookOpen className="w-4 h-4" />

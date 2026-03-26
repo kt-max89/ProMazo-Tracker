@@ -5,7 +5,8 @@ import bcrypt from "bcrypt";
 import multer from "multer";
 import { storage } from "./storage";
 import { setupAuth, requireAuth, requireAdmin } from "./auth";
-import { registerSchema, loginSchema } from "@shared/schema";
+import { registerSchema, loginSchema, insertTaskSchema } from "@shared/schema";
+import { listTasks, createTask, updateTask, archiveTask, restoreTask } from "./taskService";
 import { chunkText, hashChunk, getEmbedding, getEmbeddings, streamChatCompletion } from "./openai";
 import { listDriveFiles, listDriveFolders, listFilesInFolder, getFilePermissions, getDriveFileContent } from "./google-drive";
 
@@ -527,6 +528,60 @@ export async function registerRoutes(
       return res.json(cits);
     } catch (err: any) {
       return res.status(500).json({ message: err.message });
+    }
+  });
+
+  // Task routes
+  app.get("/api/tasks", requireAuth, async (req, res) => {
+    try {
+      const archived = req.query.archived === "true";
+      const taskList = await listTasks({ archived });
+      return res.json(taskList);
+    } catch (err: any) {
+      return res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/tasks", requireAuth, async (req, res) => {
+    try {
+      const parsed = insertTaskSchema.safeParse({ ...req.body, createdBy: req.user!.id });
+      if (!parsed.success) {
+        return res.status(400).json({ message: parsed.error.errors[0].message });
+      }
+      const task = await createTask(parsed.data);
+      return res.json(task);
+    } catch (err: any) {
+      return res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.patch("/api/tasks/:id", requireAuth, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const task = await updateTask(id, req.body);
+      return res.json(task);
+    } catch (err: any) {
+      return res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/tasks/:id/archive", requireAuth, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const task = await archiveTask(id);
+      return res.json(task);
+    } catch (err: any) {
+      return res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/tasks/:id/restore", requireAuth, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const task = await restoreTask(id);
+      return res.json(task);
+    } catch (err: any) {
+      return res.status(400).json({ message: err.message });
     }
   });
 
