@@ -29,20 +29,23 @@ const TASK_PATTERNS = [
 
 const DOC_PATTERNS = [
   /\bstandup\b/i,
-  /\bnotes?\b/i,
-  /\blogs?\b/i,
+  /\bstand[- ]up (notes?|logs?|meeting)\b/i,
+  /\bnotes?\s+(say|said|mention|show|indicate)\b/i,
+  /\bthe notes?\b/i,
+  /\bmeeting notes?\b/i,
+  /\blogs?\s+(say|said|show|mention|indicate)\b/i,
+  /\bthe logs?\b/i,
   /\bgoals?\s+doc(ument)?\b/i,
-  /\bsummariz(e|ing)\b/i,
-  /\bwhat did.*say\b/i,
+  /\bsummariz(e|ing) the\b/i,
+  /\bwhat did the\b/i,
   /\bwhat was mentioned\b/i,
-  /\bbased on the\b/i,
-  /\bretriev(e|ing)\b/i,
-  /\bdocuments?\b/i,
+  /\bbased on the (notes?|logs?|standup|doc(ument)?s?)\b/i,
+  /\bretrieve.*context\b/i,
   /\bfrom the (notes?|logs?|standup|doc(ument)?s?)\b/i,
   /\bin the (notes?|logs?|standup|doc(ument)?s?)\b/i,
-  /\baccording to\b/i,
+  /\baccording to the (notes?|logs?|standup|doc(ument)?s?)\b/i,
   /\bweekly (notes?|update|summary)\b/i,
-  /\bmeeting (notes?|logs?)\b/i,
+  /\bmentioned in\b/i,
 ];
 
 export function routeMessage(message: string): ChatRoute {

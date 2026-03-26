@@ -44,7 +44,7 @@ export async function retrieveDocumentContext(
   }));
 
   const contextText = chunks
-    .map((c, i) => `[Source ${i + 1}: ${c.documentTitle}]\n${c.chunkText.slice(0, 800)}`)
+    .map((c, i) => `[Source ${i + 1}: ${c.documentTitle}]\n${c.chunkText.slice(0, 200)}`)
     .join("\n\n---\n\n");
 
   return { chunks, contextText };
