@@ -9,7 +9,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useTheme } from "@/components/theme-provider";
 import {
   Plus, Loader2, AlertCircle, CheckCircle2, Clock, Ban,
-  Archive, RotateCcw, Pencil, Sun, Moon, LogOut, Shield,
+  Archive, RotateCcw, Pencil, Sun, Moon, LogOut, Zap,
   Settings, BookOpen, PanelLeft, UserCircle2
 } from "lucide-react";
 import { Link, useLocation } from "wouter";
@@ -461,7 +461,7 @@ export default function TasksPage() {
                 <PanelLeft className="w-4 h-4" />
               </button>
             )}
-            <Shield className="w-5 h-5 text-primary" />
+            <Zap className="w-5 h-5 text-primary" />
             <h1 className="font-semibold text-lg">Task Tracker</h1>
           </div>
           <div className="flex items-center gap-2">
