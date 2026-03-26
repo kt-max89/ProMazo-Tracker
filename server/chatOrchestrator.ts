@@ -3,6 +3,7 @@ import { selectToolIntent } from "./toolIntentSelector";
 import { runSeeTasksTool } from "./seeTasksTool";
 import { runReadDocsTool } from "./readDocsTool";
 import { buildPrompt, type ToolResult } from "./promptBuilder";
+import { validateProposal, type ValidatedProposal } from "./proposalSchema";
 import type { DocChunk } from "./documentRetrievalService";
 import type { IStorage } from "./storage";
 import type { User } from "@shared/schema";
@@ -24,6 +25,7 @@ export type OrchestratorYield =
   | { type: "route"; data: string }
   | { type: "citations"; data: DocChunk[] }
   | { type: "token"; data: string }
+  | { type: "task_proposal"; data: ValidatedProposal }
   | { type: "done" }
   | { type: "error"; data: string };
 
@@ -76,49 +78,55 @@ export async function* handleChatMessage(
     }
   }
 
-  // Step 3: build final prompt and stream answer
-  // No tools are passed to this call — the model structurally cannot call another tool
+  // Step 3: build final prompt and call the model.
+  // Uses response_format: json_object so the model can include an optional
+  // structured proposal sidecar in a single call — no second LLM call needed.
+  // Tools are intentionally omitted — the model structurally cannot call another tool.
   const messages = buildPrompt({ message, toolResult });
 
-  const stream = await openai.chat.completions.create({
+  const response = await openai.chat.completions.create({
     model: "gpt-4o-mini",
-    stream: true,
+    stream: false,
     messages,
-    // tools intentionally omitted — enforces one-tool-call-per-turn at the API level
+    response_format: { type: "json_object" },
   });
 
-  let fullAnswer = "";
-  for await (const chunk of stream) {
-    const token = chunk.choices[0]?.delta?.content;
-    if (token) {
-      fullAnswer += token;
-      yield { type: "token", data: token };
+  const rawContent = response.choices[0]?.message?.content ?? "";
+
+  // Parse the JSON response — graceful degradation on failure
+  let answerText = rawContent;
+  let proposal: ValidatedProposal | null = null;
+
+  try {
+    const parsed = JSON.parse(rawContent);
+    if (typeof parsed.answer === "string" && parsed.answer.trim()) {
+      answerText = parsed.answer.trim();
+      // Only attempt proposal parsing if answer succeeded
+      if (parsed.proposal !== undefined) {
+        proposal = validateProposal(parsed.proposal);
+      }
     }
+    // If answer key is missing/invalid, fall through to use rawContent as-is
+  } catch {
+    // JSON parse failed — use raw content as plain text, no proposal
   }
+
+  // Emit the full answer as a single token (equivalent to streaming for MVP)
+  yield { type: "token", data: answerText };
 
   if (sessionId) {
     await storage.addChatMessage({
       sessionId,
       role: "assistant",
-      content: fullAnswer,
+      content: answerText,
     });
   }
 
   yield { type: "done" };
 
-  /*
-   * FUTURE: Proposed task actions
-   *
-   * A future iteration may return structured proposals from the LLM
-   * for task mutations. These would be emitted as a separate "proposal"
-   * SSE event and only executed after explicit user confirmation in the UI.
-   *
-   * Planned proposal types (write-only, user-approval required):
-   *   - create_task:        { title, description, status, assignedTo }
-   *   - update_task_status: { taskId, newStatus, blockedReason? }
-   *   - archive_task:       { taskId }
-   *
-   * All writes must go through taskService.ts. No direct DB access from chat.
-   * No autonomous execution. The hook point is here, after fullAnswer is built.
-   */
+  // Emit proposal event after done — only if validation passed
+  // No tasks are created here. This is proposal-only. Writes require user approval.
+  if (proposal) {
+    yield { type: "task_proposal", data: proposal };
+  }
 }

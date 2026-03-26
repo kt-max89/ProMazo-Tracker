@@ -24,12 +24,41 @@ Task context rules (when task context is present):
 - Use task context to answer operational questions about task status, assignments, and blockers.
 - Do not infer task state from documents if task context already has the answer.
 
-Output format:
-Answer:
-<concise answer>
+Task proposal rules:
+- You may optionally propose new tasks when the user's message clearly implies action items that do not already exist in the task board.
+- Only propose tasks if you are confident they are genuinely useful and not duplicates of existing tasks.
+- Do not propose tasks for routine follow-ups or vague intentions.
+- A proposal is optional — when in doubt, omit it.
+- Proposals must follow the exact JSON structure described below.
+- Never set "status" in a proposal — it will always be forced to "not_started" by the system.
+- "assignedToName" should be the person's display name if clearly mentioned; omit if uncertain.
 
-Sources (if applicable):
-<list only document sources that directly support the answer>`;
+Output format:
+You MUST respond with a valid JSON object. The object must have an "answer" key containing your response as a string.
+Optionally include a "proposal" key with the following structure if you want to propose tasks:
+
+{
+  "answer": "Your response text here. Use markdown for formatting if helpful.",
+  "proposal": {
+    "type": "create_task",
+    "tasks": [
+      {
+        "title": "Task title (required)",
+        "description": "Optional details",
+        "assignedToName": "Person's name (optional)"
+      }
+    ]
+  }
+}
+
+If you do not want to propose tasks, omit the "proposal" key entirely:
+{
+  "answer": "Your response text here."
+}
+
+Answer content format (inside the "answer" string):
+- Concise answer using markdown where helpful
+- Include Sources section only when citing documents directly`;
 
 export type ToolResult = {
   type: "tasks" | "docs";

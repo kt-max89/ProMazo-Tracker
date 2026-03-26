@@ -9,6 +9,7 @@ import { registerSchema, loginSchema, insertTaskSchema, updateTaskSchema } from 
 import { listTasks, createTask, updateTask, archiveTask, restoreTask } from "./taskService";
 import { chunkText, hashChunk, getEmbedding, getEmbeddings } from "./openai";
 import { handleChatMessage } from "./chatOrchestrator";
+import { validateProposal } from "./proposalSchema";
 import { listDriveFiles, listDriveFolders, listFilesInFolder, getFilePermissions, getDriveFileContent } from "./google-drive";
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
@@ -422,12 +423,13 @@ export async function registerRoutes(
           res.write(`data: ${JSON.stringify({ type: "token", data: event.data })}\n\n`);
         } else if (event.type === "done") {
           res.write(`data: ${JSON.stringify({ type: "done" })}\n\n`);
-          res.end();
+        } else if (event.type === "task_proposal") {
+          res.write(`data: ${JSON.stringify({ type: "task_proposal", data: event.data })}\n\n`);
         } else if (event.type === "error") {
           res.write(`data: ${JSON.stringify({ type: "error", data: event.data })}\n\n`);
-          res.end();
         }
       }
+      res.end();
     } catch (err: any) {
       if (!res.headersSent) {
         return res.status(500).json({ message: err.message });
@@ -501,6 +503,43 @@ export async function registerRoutes(
     try {
       const allUsers = await storage.getAllUsers();
       return res.json(allUsers.map(({ passwordHash: _, ...u }) => u));
+    } catch (err: any) {
+      return res.status(500).json({ message: err.message });
+    }
+  });
+
+  // Task proposal approval — re-validates server-side, creates tasks through taskService only
+  app.post("/api/task-proposals/approve", requireAuth, async (req, res) => {
+    try {
+      const { tasks: rawTasks } = req.body;
+      if (!Array.isArray(rawTasks)) {
+        return res.status(400).json({ message: "tasks must be an array" });
+      }
+      const proposal = validateProposal({ type: "create_task", tasks: rawTasks });
+      if (!proposal) {
+        return res.status(400).json({ message: "No valid tasks in proposal after validation" });
+      }
+
+      const allUsers = await storage.getAllUsers();
+      let created = 0;
+      for (const draft of proposal.tasks) {
+        let assignedTo: number | null = null;
+        if (draft.assignedToName) {
+          const found = allUsers.find(
+            (u) => u.displayName.toLowerCase() === draft.assignedToName!.toLowerCase()
+          );
+          if (found) assignedTo = found.id;
+        }
+        await createTask({
+          title: draft.title,
+          description: draft.description ?? null,
+          status: "not_started",
+          createdBy: req.user!.id,
+          assignedTo,
+        });
+        created++;
+      }
+      return res.json({ created });
     } catch (err: any) {
       return res.status(500).json({ message: err.message });
     }

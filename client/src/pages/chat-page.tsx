@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { useAuth } from "@/lib/auth";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { Send, FileText, BookOpen, LogOut, Zap, Settings, Loader2, Sun, Moon, PanelLeft, ListTodo } from "lucide-react";
+import { Send, FileText, BookOpen, LogOut, Zap, Settings, Loader2, Sun, Moon, PanelLeft, ListTodo, PlusCircle, X } from "lucide-react";
 import { useLocation, Link } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 import { useTheme } from "@/components/theme-provider";
@@ -34,6 +34,98 @@ type ChatSession = {
   updatedAt: string;
 };
 
+type ProposedTaskDraft = {
+  title: string;
+  description?: string;
+  assignedToName?: string;
+};
+
+type ValidatedProposal = {
+  proposalId: string;
+  type: "create_task";
+  tasks: ProposedTaskDraft[];
+};
+
+function ProposalModal({
+  proposal,
+  onNotYet,
+  onCreateTasks,
+  isCreating,
+}: {
+  proposal: ValidatedProposal;
+  onNotYet: () => void;
+  onCreateTasks: () => void;
+  isCreating: boolean;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" data-testid="proposal-modal">
+      <div className="bg-background border rounded-2xl shadow-xl w-full max-w-2xl mx-4 overflow-hidden">
+        <div className="flex items-center justify-between px-6 py-4 border-b">
+          <div className="flex items-center gap-2">
+            <PlusCircle className="w-4 h-4 text-primary" />
+            <h2 className="font-semibold text-sm">Proposed Tasks</h2>
+          </div>
+          <button
+            data-testid="button-close-proposal"
+            onClick={onNotYet}
+            className="p-1 rounded hover:bg-muted transition-colors"
+            disabled={isCreating}
+          >
+            <X className="w-4 h-4 text-muted-foreground" />
+          </button>
+        </div>
+
+        <div className="px-6 py-3">
+          <p className="text-xs text-muted-foreground">
+            These tasks will only be created if you approve them.
+          </p>
+        </div>
+
+        <div className="px-6 pb-2 overflow-x-auto">
+          <table className="w-full text-sm" data-testid="proposal-table">
+            <thead>
+              <tr className="border-b">
+                <th className="text-left py-2 pr-4 font-medium text-muted-foreground text-xs w-2/5">Task Name</th>
+                <th className="text-left py-2 pr-4 font-medium text-muted-foreground text-xs w-2/5">Description</th>
+                <th className="text-left py-2 font-medium text-muted-foreground text-xs w-1/5">Assigned To</th>
+              </tr>
+            </thead>
+            <tbody>
+              {proposal.tasks.map((task, i) => (
+                <tr key={i} className="border-b last:border-0" data-testid={`proposal-row-${i}`}>
+                  <td className="py-2.5 pr-4 font-medium align-top">{task.title}</td>
+                  <td className="py-2.5 pr-4 text-muted-foreground align-top">{task.description || <span className="text-muted-foreground/40">—</span>}</td>
+                  <td className="py-2.5 text-muted-foreground align-top">{task.assignedToName || <span className="text-muted-foreground/40">—</span>}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="flex items-center justify-end gap-3 px-6 py-4 border-t">
+          <button
+            data-testid="button-proposal-not-yet"
+            onClick={onNotYet}
+            disabled={isCreating}
+            className="px-4 py-2 text-sm rounded-lg border hover:bg-muted transition-colors disabled:opacity-50"
+          >
+            Not Yet
+          </button>
+          <button
+            data-testid="button-proposal-create"
+            onClick={onCreateTasks}
+            disabled={isCreating}
+            className="px-4 py-2 text-sm rounded-lg bg-primary text-primary-foreground hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center gap-2"
+          >
+            {isCreating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <PlusCircle className="w-3.5 h-3.5" />}
+            Create Tasks
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function ChatPage() {
   const { user, logout } = useAuth();
   const [query, setQuery] = useState("");
@@ -41,6 +133,8 @@ export default function ChatPage() {
   const [isStreaming, setIsStreaming] = useState(false);
   const [activeSessionId, setActiveSessionId] = useState<number | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [pendingProposal, setPendingProposal] = useState<ValidatedProposal | null>(null);
+  const [isCreatingTasks, setIsCreatingTasks] = useState(false);
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const { theme, toggleTheme } = useTheme();
@@ -82,6 +176,7 @@ export default function ChatPage() {
     setActiveSessionId(null);
     setMessages([]);
     setQuery("");
+    setPendingProposal(null);
   }
 
   async function handleDeleteSession(e: React.MouseEvent, sessionId: number) {
@@ -176,6 +271,8 @@ export default function ChatPage() {
                 updated[updated.length - 1] = { ...updated[updated.length - 1], content: assistantContent };
                 return updated;
               });
+            } else if (parsed.type === "task_proposal") {
+              setPendingProposal(parsed.data as ValidatedProposal);
             } else if (parsed.type === "error") {
               throw new Error(parsed.data);
             }
@@ -207,8 +304,56 @@ export default function ChatPage() {
     }
   }
 
+  function handleNotYet() {
+    setPendingProposal(null);
+    setMessages(prev => [
+      ...prev,
+      {
+        role: "assistant",
+        content: "Okay, I didn't create them. What should be refined: the task names, descriptions, assignment, or which tasks to include?",
+      },
+    ]);
+  }
+
+  async function handleCreateTasks() {
+    if (!pendingProposal || isCreatingTasks) return;
+    setIsCreatingTasks(true);
+    try {
+      const res = await apiRequest("POST", "/api/task-proposals/approve", {
+        tasks: pendingProposal.tasks,
+      });
+      const data = await res.json();
+      setPendingProposal(null);
+      queryClient.invalidateQueries({ queryKey: ["/api/tasks"] });
+      setMessages(prev => [
+        ...prev,
+        {
+          role: "assistant",
+          content: `Created ${data.created} task${data.created === 1 ? "" : "s"}.`,
+        },
+      ]);
+    } catch (err: any) {
+      toast({
+        title: "Error creating tasks",
+        description: err.message || "Failed to create tasks",
+        variant: "destructive",
+      });
+    } finally {
+      setIsCreatingTasks(false);
+    }
+  }
+
   return (
     <div className="h-screen flex bg-background" data-testid="chat-page">
+      {pendingProposal && (
+        <ProposalModal
+          proposal={pendingProposal}
+          onNotYet={handleNotYet}
+          onCreateTasks={handleCreateTasks}
+          isCreating={isCreatingTasks}
+        />
+      )}
+
       <AppSidebar
         open={sidebarOpen}
         onToggle={setSidebarOpen}
