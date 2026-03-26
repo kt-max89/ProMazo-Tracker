@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { useAuth } from "@/lib/auth";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { Send, FileText, BookOpen, LogOut, Shield, Settings, Loader2, Sun, Moon, PanelLeft } from "lucide-react";
+import { Send, FileText, BookOpen, LogOut, Zap, Settings, Loader2, Sun, Moon, PanelLeft } from "lucide-react";
 import { useLocation, Link } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 import { useTheme } from "@/components/theme-provider";
@@ -222,8 +222,8 @@ export default function ChatPage() {
                 <PanelLeft className="w-4 h-4" />
               </button>
             )}
-            <Shield className="w-5 h-5 text-primary" />
-            <h1 className="font-semibold text-lg">Internal Notes Q&A</h1>
+            <Zap className="w-5 h-5 text-primary" />
+            <h1 className="font-semibold text-lg">Zeus - ProMazo National Assistant</h1>
           </div>
           <div className="flex items-center gap-2">
             <span className="text-sm text-muted-foreground mr-2" data-testid="text-user-name">
@@ -264,7 +264,7 @@ export default function ChatPage() {
           <div className="max-w-3xl mx-auto space-y-6">
             {messages.length === 0 && (
               <div className="text-center py-20">
-                <Shield className="w-12 h-12 mx-auto text-muted-foreground/30 mb-4" />
+                <Zap className="w-12 h-12 mx-auto text-muted-foreground/30 mb-4" />
                 <h2 className="text-xl font-medium mb-2" data-testid="text-welcome">Ask a question</h2>
                 <p className="text-muted-foreground text-sm max-w-md mx-auto">
                   Your questions will be answered using {documents?.length ?? 0} accessible documents.
