@@ -108,8 +108,11 @@ export const insertTaskSchema = createInsertSchema(tasks).omit({
   archivedAt: true,
 });
 
+export const updateTaskSchema = insertTaskSchema.partial().omit({ createdBy: true, isArchived: true });
+
 export type Task = typeof tasks.$inferSelect;
 export type InsertTask = z.infer<typeof insertTaskSchema>;
+export type UpdateTask = z.infer<typeof updateTaskSchema>;
 
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;

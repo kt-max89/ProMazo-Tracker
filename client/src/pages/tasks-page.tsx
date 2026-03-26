@@ -18,7 +18,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter
 } from "@/components/ui/dialog";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue
@@ -134,6 +134,9 @@ function TaskFormDialog({
       <DialogContent className="max-w-md" data-testid="dialog-task-form">
         <DialogHeader>
           <DialogTitle>{isEdit ? "Edit task" : "New task"}</DialogTitle>
+          <DialogDescription className="sr-only">
+            {isEdit ? "Edit the task details below." : "Fill in the details to create a new task."}
+          </DialogDescription>
         </DialogHeader>
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
@@ -312,10 +315,7 @@ export default function TasksPage() {
   const [editTask, setEditTask] = useState<Task | null>(null);
 
   const { data: tasks = [], isLoading } = useQuery<Task[]>({
-    queryKey: ["/api/tasks", showArchived ? "archived" : "open"],
-    queryFn: () =>
-      fetch(`/api/tasks?archived=${showArchived}`, { credentials: "include" })
-        .then(r => r.json()),
+    queryKey: showArchived ? ["/api/tasks", "archived"] : ["/api/tasks"],
   });
 
   const restoreMutation = useMutation({
