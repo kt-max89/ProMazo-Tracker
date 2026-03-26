@@ -42,8 +42,7 @@ function formatCompact(t: CompactTask): string {
 }
 
 export async function runSeeTasksTool(args: SeeTasksArgs): Promise<SeeTasksResult> {
-  const limit = args.limit ?? 10;
-  const includeArchived = args.includeArchived ?? false;
+  const limit = Math.min(Math.max(1, args.limit ?? 10), 20);
 
   const counts = await getTaskCounts();
   const total = Object.values(counts).reduce((a, b) => a + b, 0);
@@ -70,7 +69,7 @@ export async function runSeeTasksTool(args: SeeTasksArgs): Promise<SeeTasksResul
   } else if (args.query) {
     matched = await searchTasks(args.query);
   } else {
-    matched = await listTasks({ archived: includeArchived });
+    matched = await listTasks({ archived: false });
   }
 
   matched = matched.slice(0, limit);

@@ -13,7 +13,7 @@ export async function runReadDocsTool(
   args: ReadDocsArgs,
   user: User
 ): Promise<ReadDocsResult> {
-  const limit = args.limit ?? 5;
+  const limit = Math.min(Math.max(1, args.limit ?? 5), 10);
   const result = await retrieveDocumentContext(args.query, user, limit);
 
   if (result.chunks.length === 0) {

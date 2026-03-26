@@ -12,7 +12,6 @@ export type SeeTasksArgs = {
   query?: string;
   status?: "not_started" | "in_progress" | "blocked" | "done";
   mode?: "summary" | "matching_tasks";
-  includeArchived?: boolean;
   limit?: number;
 };
 
@@ -51,13 +50,9 @@ const TOOL_DEFINITIONS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
             description:
               "summary: return status counts only. matching_tasks: return filtered task list.",
           },
-          includeArchived: {
-            type: "boolean",
-            description: "Whether to include archived tasks. Default false.",
-          },
           limit: {
             type: "number",
-            description: "Max number of tasks to return. Default 10.",
+            description: "Max number of tasks to return. Between 1 and 20. Default 10.",
           },
         },
         required: [],
@@ -125,24 +120,25 @@ export async function selectToolIntent(message: string): Promise<IntentResult> {
   }
 
   if (toolCall.function.name === "see_tasks") {
+    const rawLimit = typeof parsed.limit === "number" ? parsed.limit : 10;
     return {
       intent: "SEE_TASKS",
       args: {
         query: typeof parsed.query === "string" ? parsed.query : undefined,
         status: isValidStatus(parsed.status) ? parsed.status : undefined,
         mode: parsed.mode === "summary" || parsed.mode === "matching_tasks" ? parsed.mode : "matching_tasks",
-        includeArchived: typeof parsed.includeArchived === "boolean" ? parsed.includeArchived : false,
-        limit: typeof parsed.limit === "number" ? parsed.limit : 10,
+        limit: Math.min(Math.max(1, Math.round(rawLimit)), 20),
       },
     };
   }
 
   if (toolCall.function.name === "read_docs") {
+    const rawLimit = typeof parsed.limit === "number" ? parsed.limit : 5;
     return {
       intent: "READ_DOCS",
       args: {
         query: typeof parsed.query === "string" ? parsed.query : message,
-        limit: typeof parsed.limit === "number" ? parsed.limit : 5,
+        limit: Math.min(Math.max(1, Math.round(rawLimit)), 10),
       },
     };
   }
