@@ -295,12 +295,12 @@ export default function ChatPage() {
                     <>
                       {(msg.toolUsed === "SEE_TASKS" || msg.toolUsed === "READ_DOCS") && (
                         <div className="flex items-center gap-1.5 mb-1 ml-1" data-testid={`tool-indicator-${i}`}>
-                          {msg.toolUsed === "SEE_TASKS" ? (
-                            <ListTodo className="w-3 h-3 text-muted-foreground/60" />
-                          ) : (
-                            <FileText className="w-3 h-3 text-muted-foreground/60" />
-                          )}
-                          <span className="text-[11px] text-muted-foreground/60">
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-muted text-muted-foreground/70 text-[11px]">
+                            {msg.toolUsed === "SEE_TASKS" ? (
+                              <ListTodo className="w-3 h-3" />
+                            ) : (
+                              <FileText className="w-3 h-3" />
+                            )}
                             {msg.toolUsed === "SEE_TASKS" ? "Task Board" : "Documents"}
                           </span>
                         </div>
