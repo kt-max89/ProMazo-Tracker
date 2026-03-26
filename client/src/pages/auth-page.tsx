@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useAuth } from "@/lib/auth";
 import { useLocation } from "wouter";
 import { useToast } from "@/hooks/use-toast";
-import { Zap, Lock, Mail, User } from "lucide-react";
+import { Zap, Lock, Mail, User, ListTodo, FileSearch, MessageSquare, PlusCircle } from "lucide-react";
 
 export default function AuthPage() {
   const [isLogin, setIsLogin] = useState(true);
@@ -129,22 +129,49 @@ export default function AuthPage() {
 
       <div className="hidden lg:flex flex-1 bg-primary/5 items-center justify-center p-8">
         <div className="max-w-md">
-          <h2 className="text-3xl font-semibold tracking-tight mb-4">Internal Notes Q&A</h2>
+          <div className="flex items-center gap-3 mb-4">
+            <Zap className="w-8 h-8 text-primary shrink-0" />
+            <h2 className="text-3xl font-semibold tracking-tight">Meet Zeus</h2>
+          </div>
           <p className="text-muted-foreground text-lg leading-relaxed">
-            Ask questions about your organization's documents and get AI-powered answers with source citations.
+            Your AI-powered assistant for the ProMazo national team. Zeus knows your documents, tracks your tasks, and helps the team move faster.
           </p>
-          <ul className="mt-8 space-y-3 text-muted-foreground">
-            <li className="flex items-start gap-3">
-              <div className="w-1.5 h-1.5 rounded-full bg-primary mt-2 shrink-0" />
-              Document-grounded answers with citations
+          <ul className="mt-8 space-y-5">
+            <li className="flex items-start gap-4">
+              <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
+                <FileSearch className="w-4 h-4 text-primary" />
+              </div>
+              <div>
+                <p className="font-medium text-sm">Search your documents</p>
+                <p className="text-muted-foreground text-sm mt-0.5">Ask Zeus anything about your internal docs and get answers with cited sources.</p>
+              </div>
             </li>
-            <li className="flex items-start gap-3">
-              <div className="w-1.5 h-1.5 rounded-full bg-primary mt-2 shrink-0" />
-              Role-based document access controls
+            <li className="flex items-start gap-4">
+              <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
+                <ListTodo className="w-4 h-4 text-primary" />
+              </div>
+              <div>
+                <p className="font-medium text-sm">Track team tasks</p>
+                <p className="text-muted-foreground text-sm mt-0.5">Ask what's in progress, blocked, or done — Zeus queries the live task board.</p>
+              </div>
             </li>
-            <li className="flex items-start gap-3">
-              <div className="w-1.5 h-1.5 rounded-full bg-primary mt-2 shrink-0" />
-              Privacy-first — your data stays secure
+            <li className="flex items-start gap-4">
+              <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
+                <PlusCircle className="w-4 h-4 text-primary" />
+              </div>
+              <div>
+                <p className="font-medium text-sm">Propose new tasks</p>
+                <p className="text-muted-foreground text-sm mt-0.5">Zeus can surface action items from your conversations for one-click creation.</p>
+              </div>
+            </li>
+            <li className="flex items-start gap-4">
+              <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
+                <MessageSquare className="w-4 h-4 text-primary" />
+              </div>
+              <div>
+                <p className="font-medium text-sm">Always in context</p>
+                <p className="text-muted-foreground text-sm mt-0.5">Full chat history kept per session so Zeus always knows the thread.</p>
+              </div>
             </li>
           </ul>
         </div>
