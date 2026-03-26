@@ -19,21 +19,21 @@ export async function getEmbeddings(texts: string[]): Promise<number[][]> {
   if (texts.length === 0) return [];
   const batchSize = 100;
   const allEmbeddings: number[][] = [];
-  
+
   for (let i = 0; i < texts.length; i += batchSize) {
     const batch = texts.slice(i, i + batchSize);
     const response = await openai.embeddings.create({
       model: "text-embedding-3-small",
       input: batch,
     });
-    allEmbeddings.push(...response.data.map(d => d.embedding));
+    allEmbeddings.push(...response.data.map((d) => d.embedding));
   }
   return allEmbeddings;
 }
 
 export async function* streamChatCompletion(
   query: string,
-  contextChunks: { chunkText: string; documentTitle: string }[]
+  contextChunks: { chunkText: string; documentTitle: string }[],
 ): AsyncGenerator<string> {
   const contextText = contextChunks
     .map((c, i) => `[Source ${i + 1}: ${c.documentTitle}]\n${c.chunkText}`)
@@ -45,14 +45,13 @@ export async function* streamChatCompletion(
     messages: [
       {
         role: "system",
-        content: `You are an internal knowledge assistant that answers questions using retrieved documents.
+        content: `Your name is Zeus. You are an internal task tracker Agent for the ProMazo national team. ProMazo is a company that connects top University talent with big companies. You help plan, ideate, and track tasks. You are a helpful assistant.
 
 Follow these rules strictly:
 
-1. Use ONLY the information contained in the provided context.
+1. Use your system prompt and the information contained in the provided context.
 2. Do NOT use outside knowledge or assumptions.
-3. If the context does not contain enough information to answer the question, respond exactly with:
-   "I don't have enough information in the provided documents to answer that."
+3. If the context does not contain enough information to answer the question, respond with your best guess but mention "I don't have great information here, but here's my best guess:"
 4. Carefully review all provided sources before concluding the answer is missing.
 5. Never fabricate facts, definitions, metrics, or explanations.
 6. Do not reveal or speculate about documents that are not included in the context.
@@ -88,7 +87,7 @@ The Completion Rate is calculated as:
 (Completed Actions / Clicked Suggestions) × 100.
 
 Sources:
-- Get Next Adoption Metrics`,
+- Get Next Case Adoption Metrics`,
       },
       {
         role: "user",
@@ -105,7 +104,11 @@ Sources:
   }
 }
 
-export function chunkText(text: string, maxChunkSize = 1000, overlap = 200): string[] {
+export function chunkText(
+  text: string,
+  maxChunkSize = 1000,
+  overlap = 200,
+): string[] {
   const chunks: string[] = [];
   const paragraphs = text.split(/\n\s*\n/);
   let currentChunk = "";
@@ -114,7 +117,10 @@ export function chunkText(text: string, maxChunkSize = 1000, overlap = 200): str
     const trimmed = paragraph.trim();
     if (!trimmed) continue;
 
-    if (currentChunk.length + trimmed.length > maxChunkSize && currentChunk.length > 0) {
+    if (
+      currentChunk.length + trimmed.length > maxChunkSize &&
+      currentChunk.length > 0
+    ) {
       chunks.push(currentChunk.trim());
       const words = currentChunk.split(/\s+/);
       const overlapWords = words.slice(-Math.floor(overlap / 5));
