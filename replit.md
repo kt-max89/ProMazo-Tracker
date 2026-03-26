@@ -24,13 +24,19 @@ RAG-powered document Q&A app that lets users upload documents and ask questions 
 - `shared/schema.ts` — Single source of truth for DB schema and types
 - `server/storage.ts` — Database operations (Drizzle ORM)
 - `server/routes.ts` — Express API routes
-- `server/taskService.ts` — Task business logic (listTasks, createTask, updateTask, archiveTask, restoreTask)
+- `server/taskService.ts` — Task business logic (listTasks, createTask, updateTask, archiveTask, restoreTask, getTaskCounts, getTasksByStatus, searchTasks, getCompactTaskContext)
 - `server/openai.ts` — OpenAI integration (embeddings, streaming chat, chunking)
 - `server/auth.ts` — Passport.js auth setup
 - `server/google-drive.ts` — Google Drive API integration (via Replit Connectors)
 - `client/src/App.tsx` — Frontend routing and providers
 - `client/src/pages/` — Page components (chat, admin, history, auth, tasks)
 - `client/src/components/theme-provider.tsx` — Dark/light mode provider
+
+### Chat Orchestration Layer (added)
+- `server/routeMessage.ts` — Classifies each chat message into TASKS_ONLY | DOCS_ONLY | BOTH | NEITHER using keyword/regex rules (no LLM call required for routing)
+- `server/documentRetrievalService.ts` — Thin wrapper around embedding + pgvector similarity search; only called when route includes docs
+- `server/promptBuilder.ts` — Assembles the OpenAI messages array with optional task context and/or doc context sections; includes Zeus system prompt
+- `server/chatOrchestrator.ts` — Async generator that orchestrates: route → fetch task context → fetch doc context → build prompt → stream LLM response → return citations. Includes a stub comment block for future proposed task actions (create_task, update_task_status, archive_task) that are not yet wired.
 
 ## Database Tables
 - `users` — credentials and roles

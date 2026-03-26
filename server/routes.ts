@@ -7,7 +7,8 @@ import { storage } from "./storage";
 import { setupAuth, requireAuth, requireAdmin } from "./auth";
 import { registerSchema, loginSchema, insertTaskSchema, updateTaskSchema } from "@shared/schema";
 import { listTasks, createTask, updateTask, archiveTask, restoreTask } from "./taskService";
-import { chunkText, hashChunk, getEmbedding, getEmbeddings, streamChatCompletion } from "./openai";
+import { chunkText, hashChunk, getEmbedding, getEmbeddings } from "./openai";
+import { handleChatMessage } from "./chatOrchestrator";
 import { listDriveFiles, listDriveFolders, listFilesInFolder, getFilePermissions, getDriveFileContent } from "./google-drive";
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
@@ -386,6 +387,7 @@ export async function registerRoutes(
       }
 
       const user = req.user! as any;
+      const message = query.trim();
 
       let activeSessionId = sessionId ? parseInt(sessionId) : null;
       if (activeSessionId) {
@@ -396,73 +398,36 @@ export async function registerRoutes(
       }
 
       if (activeSessionId) {
-        await storage.addChatMessage({ sessionId: activeSessionId, role: "user", content: query.trim() });
+        await storage.addChatMessage({ sessionId: activeSessionId, role: "user", content: message });
         await storage.updateChatSessionTimestamp(activeSessionId);
       }
-
-      const accessibleDocIds = await storage.getAccessibleDocumentIds(user);
-      if (accessibleDocIds.length === 0) {
-        const fallback = "You don't have access to any documents. Please contact an administrator.";
-        if (activeSessionId) {
-          await storage.addChatMessage({ sessionId: activeSessionId, role: "assistant", content: fallback });
-        }
-        return res.status(200).json({ answer: fallback, citations: [] });
-      }
-
-      const queryEmbedding = await getEmbedding(query.trim());
-      const similarChunks = await storage.searchSimilarChunks(queryEmbedding, accessibleDocIds, 5);
-
-      if (similarChunks.length === 0) {
-        const fallback = "No relevant information found in the documents you have access to.";
-        if (activeSessionId) {
-          await storage.addChatMessage({ sessionId: activeSessionId, role: "assistant", content: fallback });
-        }
-        return res.status(200).json({ answer: fallback, citations: [] });
-      }
-
-      const allDocs = await storage.getAllDocuments();
-      const docMap = new Map(allDocs.map(d => [d.id, d]));
-
-      const contextChunks = similarChunks.map(chunk => ({
-        ...chunk,
-        documentTitle: docMap.get(chunk.documentId)?.title || "Unknown",
-      }));
 
       res.setHeader("Content-Type", "text/event-stream");
       res.setHeader("Cache-Control", "no-cache");
       res.setHeader("Connection", "keep-alive");
 
-      const citationData = contextChunks.map(c => ({
-        documentId: c.documentId,
-        documentTitle: c.documentTitle,
-        chunkId: c.id,
-        chunkText: c.chunkText.slice(0, 200),
-        similarity: c.similarity,
-      }));
-      res.write(`data: ${JSON.stringify({ type: "citations", data: citationData })}\n\n`);
-
-      for (const chunk of contextChunks) {
-        await storage.createCitation({
-          userId: user.id,
-          documentId: chunk.documentId,
-          chunkId: chunk.id,
-          query: query.trim().slice(0, 500),
-          createdAt: new Date().toISOString(),
-        });
+      for await (const event of handleChatMessage({ message, user, storage, sessionId: activeSessionId })) {
+        if (event.type === "route") {
+          res.write(`data: ${JSON.stringify({ type: "route", data: event.data })}\n\n`);
+        } else if (event.type === "citations") {
+          const citationData = event.data.map((c) => ({
+            documentId: c.documentId,
+            documentTitle: c.documentTitle,
+            chunkId: c.chunkId,
+            chunkText: c.chunkText.slice(0, 200),
+            similarity: c.similarity,
+          }));
+          res.write(`data: ${JSON.stringify({ type: "citations", data: citationData })}\n\n`);
+        } else if (event.type === "token") {
+          res.write(`data: ${JSON.stringify({ type: "token", data: event.data })}\n\n`);
+        } else if (event.type === "done") {
+          res.write(`data: ${JSON.stringify({ type: "done" })}\n\n`);
+          res.end();
+        } else if (event.type === "error") {
+          res.write(`data: ${JSON.stringify({ type: "error", data: event.data })}\n\n`);
+          res.end();
+        }
       }
-
-      let fullAnswer = "";
-      for await (const token of streamChatCompletion(query, contextChunks)) {
-        fullAnswer += token;
-        res.write(`data: ${JSON.stringify({ type: "token", data: token })}\n\n`);
-      }
-
-      if (activeSessionId) {
-        await storage.addChatMessage({ sessionId: activeSessionId, role: "assistant", content: fullAnswer });
-      }
-
-      res.write(`data: ${JSON.stringify({ type: "done" })}\n\n`);
-      res.end();
     } catch (err: any) {
       if (!res.headersSent) {
         return res.status(500).json({ message: err.message });
