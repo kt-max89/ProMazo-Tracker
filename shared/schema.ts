@@ -106,6 +106,7 @@ export const insertTaskSchema = createInsertSchema(tasks).omit({
   createdAt: true,
   updatedAt: true,
   archivedAt: true,
+  isArchived: true,
 });
 
 export const updateTaskSchema = insertTaskSchema.partial().omit({ createdBy: true, isArchived: true });

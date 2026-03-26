@@ -42,9 +42,10 @@ RAG-powered document Q&A app that lets users upload documents and ask questions 
 - `tasks` — task tracker (title, description, status, blocked_reason, is_archived, created_by, archived_at)
 
 ## Task Tracker API
-- `GET /api/tasks` — list open tasks (is_archived=false); `?archived=true` for archived
+- `GET /api/tasks` — list open tasks (is_archived=false)
+- `GET /api/tasks/archived` — list archived tasks (is_archived=true)
 - `POST /api/tasks` — create task
-- `PATCH /api/tasks/:id` — update task
+- `PATCH /api/tasks/:id` — update task (Zod-validated partial update)
 - `POST /api/tasks/:id/archive` — soft-archive task
 - `POST /api/tasks/:id/restore` — restore archived task
 

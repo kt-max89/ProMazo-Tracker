@@ -2,7 +2,6 @@ import { eq } from "drizzle-orm";
 import { db } from "./db";
 import { tasks } from "@shared/schema";
 import type { Task, InsertTask } from "@shared/schema";
-import { z } from "zod";
 
 export type TaskFilters = { archived?: boolean };
 
