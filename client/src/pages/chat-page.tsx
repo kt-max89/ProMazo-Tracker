@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { useAuth } from "@/lib/auth";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { Send, FileText, BookOpen, LogOut, Zap, Settings, Loader2, Sun, Moon, PanelLeft, ListTodo, Search } from "lucide-react";
+import { Send, FileText, BookOpen, LogOut, Zap, Settings, Loader2, Sun, Moon, PanelLeft, ListTodo } from "lucide-react";
 import { useLocation, Link } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 import { useTheme } from "@/components/theme-provider";
@@ -298,10 +298,10 @@ export default function ChatPage() {
                           {msg.toolUsed === "SEE_TASKS" ? (
                             <ListTodo className="w-3 h-3 text-muted-foreground/60" />
                           ) : (
-                            <Search className="w-3 h-3 text-muted-foreground/60" />
+                            <FileText className="w-3 h-3 text-muted-foreground/60" />
                           )}
                           <span className="text-[11px] text-muted-foreground/60">
-                            {msg.toolUsed === "SEE_TASKS" ? "Checked task board" : "Searched documents"}
+                            {msg.toolUsed === "SEE_TASKS" ? "Task Board" : "Documents"}
                           </span>
                         </div>
                       )}
