@@ -32,11 +32,15 @@ RAG-powered document Q&A app that lets users upload documents and ask questions 
 - `client/src/pages/` — Page components (chat, admin, history, auth, tasks)
 - `client/src/components/theme-provider.tsx` — Dark/light mode provider
 
-### Chat Orchestration Layer (added)
-- `server/routeMessage.ts` — Classifies each chat message into TASKS_ONLY | DOCS_ONLY | BOTH | NEITHER using keyword/regex rules (no LLM call required for routing)
-- `server/documentRetrievalService.ts` — Thin wrapper around embedding + pgvector similarity search; only called when route includes docs
-- `server/promptBuilder.ts` — Assembles the OpenAI messages array with optional task context and/or doc context sections; includes Zeus system prompt
-- `server/chatOrchestrator.ts` — Async generator that orchestrates: route → fetch task context → fetch doc context → build prompt → stream LLM response → return citations. Includes a stub comment block for future proposed task actions (create_task, update_task_status, archive_task) that are not yet wired.
+### Chat Orchestration Layer
+Turn flow: intent selection → one tool call (or none) → final streaming answer.
+
+- `server/toolIntentSelector.ts` — Single non-streaming LLM call using OpenAI function-calling to select SEE_TASKS | READ_DOCS | NO_TOOL plus typed args. Replaces the old keyword/regex router. If model returns no tool call, intent is NO_TOOL.
+- `server/seeTasksTool.ts` — Clean typed task retrieval (SeeTasksArgs → SeeTasksResult). Wraps getTaskCounts/getTasksByStatus/searchTasks. Returns isEmpty flag and retry suggestion when no tasks match.
+- `server/readDocsTool.ts` — Clean typed doc retrieval (ReadDocsArgs → ReadDocsResult). Wraps documentRetrievalService. Returns isEmpty flag and retry suggestion when no chunks found.
+- `server/documentRetrievalService.ts` — Underlying embedding + pgvector similarity search layer; called only by readDocsTool.
+- `server/promptBuilder.ts` — Builds OpenAI messages array from ToolResult (type, content, isEmpty, suggestRetry). When empty, instructs model to acknowledge and surface the retry suggestion verbatim.
+- `server/chatOrchestrator.ts` — Async generator enforcing one-tool-call-per-turn structurally: intent selector → single if/else tool branch → final LLM call with no tools defined (second tool call is architecturally impossible). Stub comment block for future proposed task actions (create_task, update_task_status, archive_task).
 
 ## Database Tables
 - `users` — credentials and roles

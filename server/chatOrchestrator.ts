@@ -1,8 +1,9 @@
 import OpenAI from "openai";
-import { routeMessage } from "./routeMessage";
-import { getCompactTaskContext } from "./taskService";
-import { retrieveDocumentContext, type DocChunk } from "./documentRetrievalService";
-import { buildPrompt } from "./promptBuilder";
+import { selectToolIntent } from "./toolIntentSelector";
+import { runSeeTasksTool } from "./seeTasksTool";
+import { runReadDocsTool } from "./readDocsTool";
+import { buildPrompt, type ToolResult } from "./promptBuilder";
+import type { DocChunk } from "./documentRetrievalService";
 import type { IStorage } from "./storage";
 import type { User } from "@shared/schema";
 
@@ -31,27 +32,38 @@ export async function* handleChatMessage(
 ): AsyncGenerator<OrchestratorYield> {
   const { message, user, storage, sessionId } = input;
 
-  const route = routeMessage(message);
-  yield { type: "route", data: route };
+  // Step 1: one LLM call to select intent — SEE_TASKS, READ_DOCS, or NO_TOOL
+  const intentResult = await selectToolIntent(message);
+  yield { type: "route", data: intentResult.intent };
 
-  let taskContext: string | undefined;
-  let docContext: string | undefined;
+  let toolResult: ToolResult | undefined;
   let docChunks: DocChunk[] = [];
 
-  if (route === "TASKS_ONLY" || route === "BOTH") {
-    taskContext = await getCompactTaskContext(message);
+  // Step 2: call exactly one tool once, or skip entirely — enforced structurally
+  if (intentResult.intent === "SEE_TASKS") {
+    const result = await runSeeTasksTool(intentResult.args);
+    toolResult = {
+      type: "tasks",
+      content: result.content,
+      isEmpty: result.isEmpty,
+      suggestRetry: result.suggestRetry,
+    };
+  } else if (intentResult.intent === "READ_DOCS") {
+    const result = await runReadDocsTool(intentResult.args, user);
+    docChunks = result.chunks;
+    toolResult = {
+      type: "docs",
+      content: result.contextText,
+      isEmpty: result.isEmpty,
+      suggestRetry: result.suggestRetry,
+    };
   }
+  // NO_TOOL: toolResult stays undefined, no retrieval runs
 
-  if (route === "DOCS_ONLY" || route === "BOTH") {
-    const result = await retrieveDocumentContext(message, user);
-    if (result.chunks.length > 0) {
-      docContext = result.contextText;
-      docChunks = result.chunks;
-    }
-  }
-
+  // Emit citations (empty array for task/no-tool paths)
   yield { type: "citations", data: docChunks };
 
+  // Persist doc citations to DB
   if (docChunks.length > 0) {
     for (const chunk of docChunks) {
       await storage.createCitation({
@@ -64,12 +76,15 @@ export async function* handleChatMessage(
     }
   }
 
-  const messages = buildPrompt({ message, taskContext, docContext });
+  // Step 3: build final prompt and stream answer
+  // No tools are passed to this call — the model structurally cannot call another tool
+  const messages = buildPrompt({ message, toolResult });
 
   const stream = await openai.chat.completions.create({
     model: "gpt-4o-mini",
     stream: true,
     messages,
+    // tools intentionally omitted — enforces one-tool-call-per-turn at the API level
   });
 
   let fullAnswer = "";
@@ -94,17 +109,16 @@ export async function* handleChatMessage(
   /*
    * FUTURE: Proposed task actions
    *
-   * After the LLM answer is generated, a future iteration could inspect
-   * the answer (or a structured side-channel) for proposed task mutations.
-   * These would be returned to the client as a separate "proposal" event
-   * and only executed after explicit user confirmation.
+   * A future iteration may return structured proposals from the LLM
+   * for task mutations. These would be emitted as a separate "proposal"
+   * SSE event and only executed after explicit user confirmation in the UI.
    *
-   * Planned proposal types:
+   * Planned proposal types (write-only, user-approval required):
    *   - create_task:        { title, description, status, assignedTo }
    *   - update_task_status: { taskId, newStatus, blockedReason? }
    *   - archive_task:       { taskId }
    *
-   * All writes must go through taskService.ts functions. No direct DB access
-   * from chat. No autonomous execution without a user approval step.
+   * All writes must go through taskService.ts. No direct DB access from chat.
+   * No autonomous execution. The hook point is here, after fullAnswer is built.
    */
 }
