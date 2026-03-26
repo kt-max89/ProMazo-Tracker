@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useAuth } from "@/lib/auth";
 import { useLocation } from "wouter";
 import { useToast } from "@/hooks/use-toast";
-import { Shield, Lock, Mail, User } from "lucide-react";
+import { Zap, Lock, Mail, User } from "lucide-react";
 
 export default function AuthPage() {
   const [isLogin, setIsLogin] = useState(true);
@@ -41,7 +41,7 @@ export default function AuthPage() {
         <div className="w-full max-w-md">
           <div className="mb-8 text-center">
             <div className="inline-flex items-center justify-center w-12 h-12 rounded-lg bg-primary/10 mb-4">
-              <Shield className="w-6 h-6 text-primary" />
+              <Zap className="w-6 h-6 text-primary" />
             </div>
             <h1 className="text-2xl font-semibold tracking-tight" data-testid="text-auth-title">
               {isLogin ? "Welcome back" : "Create account"}
@@ -121,7 +121,7 @@ export default function AuthPage() {
           </div>
 
           <div className="mt-8 p-3 rounded-lg bg-muted/50 text-xs text-muted-foreground text-center">
-            <Shield className="w-3.5 h-3.5 inline-block mr-1 -mt-0.5" />
+            <Zap className="w-3.5 h-3.5 inline-block mr-1 -mt-0.5" />
             Your data is not used for model training. Queries are processed securely and not stored.
           </div>
         </div>
