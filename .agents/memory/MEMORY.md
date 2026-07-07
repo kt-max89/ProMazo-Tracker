@@ -1,0 +1,2 @@
+- [Stale server + project routes](stale-server-routes.md) — running server never picks up new routes until workflow restart; Vite catch-all returns 200 HTML for unregistered paths.
+- [Persist.ts atomic writes](persist-atomic-writes.md) — file store must use temp+fsync+rename to avoid corrupted JSON on crash; direct writeFileSync is unsafe.
