@@ -1,18 +1,26 @@
 import type { Task, InsertTask } from "@shared/schema";
 import { getProject } from "./projectService";
+import { loadStore, saveStore } from "./persist";
 
 export type TaskFilters = { archived?: boolean };
 
 const VALID_STATUSES = ["not_started", "in_progress", "blocked", "done"] as const;
 type TaskStatus = (typeof VALID_STATUSES)[number];
 
-// In-memory store
-let taskStore: Task[] = [];
-let nextId = 1;
+// Persisted store
+type TaskStore = { tasks: Task[]; nextId: number };
+
+function load(): TaskStore {
+  return loadStore<TaskStore>("tasks", { tasks: [], nextId: 1 });
+}
+
+function save(store: TaskStore): void {
+  saveStore("tasks", store);
+}
 
 export async function listTasks(filters: TaskFilters = {}): Promise<Task[]> {
   const archived = filters.archived ?? false;
-  return taskStore.filter(t => t.isArchived === archived);
+  return load().tasks.filter(t => t.isArchived === archived);
 }
 
 export async function createTask(input: InsertTask): Promise<Task> {
@@ -29,9 +37,10 @@ export async function createTask(input: InsertTask): Promise<Task> {
     const proj = await getProject(input.projectId);
     if (!proj) throw new Error("Project not found");
   }
+  const store = load();
   const now = new Date().toISOString();
   const task: Task = {
-    id: nextId++,
+    id: store.nextId++,
     title: input.title,
     description: input.description ?? null,
     status: (input.status as TaskStatus) ?? "not_started",
@@ -44,7 +53,8 @@ export async function createTask(input: InsertTask): Promise<Task> {
     assignedTo: input.assignedTo ?? null,
     projectId: input.projectId ?? null,
   };
-  taskStore.push(task);
+  store.tasks.push(task);
+  save(store);
   return task;
 }
 
@@ -56,9 +66,10 @@ export async function updateTask(id: number, input: Partial<InsertTask>): Promis
     throw new Error(`Status must be one of: ${VALID_STATUSES.join(", ")}`);
   }
 
-  const idx = taskStore.findIndex(t => t.id === id);
+  const store = load();
+  const idx = store.tasks.findIndex(t => t.id === id);
   if (idx === -1) throw new Error("Task not found");
-  const existing = taskStore[idx];
+  const existing = store.tasks[idx];
 
   if (input.status === "blocked") {
     const reason = input.blockedReason !== undefined ? input.blockedReason : existing.blockedReason;
@@ -79,25 +90,30 @@ export async function updateTask(id: number, input: Partial<InsertTask>): Promis
 
   const now = new Date().toISOString();
   const updated: Task = { ...existing, ...updates, updatedAt: now };
-  taskStore[idx] = updated;
+  store.tasks[idx] = updated;
+  save(store);
   return updated;
 }
 
 export async function archiveTask(id: number): Promise<Task> {
-  const idx = taskStore.findIndex(t => t.id === id);
+  const store = load();
+  const idx = store.tasks.findIndex(t => t.id === id);
   if (idx === -1) throw new Error("Task not found");
   const now = new Date().toISOString();
-  const updated: Task = { ...taskStore[idx], isArchived: true, archivedAt: now, updatedAt: now };
-  taskStore[idx] = updated;
+  const updated: Task = { ...store.tasks[idx], isArchived: true, archivedAt: now, updatedAt: now };
+  store.tasks[idx] = updated;
+  save(store);
   return updated;
 }
 
 export async function restoreTask(id: number): Promise<Task> {
-  const idx = taskStore.findIndex(t => t.id === id);
+  const store = load();
+  const idx = store.tasks.findIndex(t => t.id === id);
   if (idx === -1) throw new Error("Task not found");
   const now = new Date().toISOString();
-  const updated: Task = { ...taskStore[idx], isArchived: false, archivedAt: null, updatedAt: now };
-  taskStore[idx] = updated;
+  const updated: Task = { ...store.tasks[idx], isArchived: false, archivedAt: null, updatedAt: now };
+  store.tasks[idx] = updated;
+  save(store);
   return updated;
 }
 
@@ -105,19 +121,19 @@ export type TaskCounts = Record<string, number>;
 
 export async function getTaskCounts(): Promise<TaskCounts> {
   const counts: TaskCounts = { not_started: 0, in_progress: 0, blocked: 0, done: 0 };
-  for (const t of taskStore) {
+  for (const t of load().tasks) {
     if (!t.isArchived) counts[t.status] = (counts[t.status] ?? 0) + 1;
   }
   return counts;
 }
 
 export async function getTasksByStatus(status: string): Promise<Task[]> {
-  return taskStore.filter(t => !t.isArchived && t.status === status);
+  return load().tasks.filter(t => !t.isArchived && t.status === status);
 }
 
 export async function searchTasks(query: string): Promise<Task[]> {
   const term = query.toLowerCase();
-  return taskStore.filter(
+  return load().tasks.filter(
     t =>
       !t.isArchived &&
       (t.title.toLowerCase().includes(term) || (t.description ?? "").toLowerCase().includes(term))
