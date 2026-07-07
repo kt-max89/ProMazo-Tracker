@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useForm } from "react-hook-form";
@@ -19,7 +19,7 @@ import {
   Form, FormControl, FormField, FormItem, FormLabel, FormMessage,
 } from "@/components/ui/form";
 import ReactMarkdown from "react-markdown";
-import type { Task, Project } from "@shared/schema";
+import type { Task, Project, Milestone } from "@shared/schema";
 
 type AppUser = { id: number; displayName: string; email: string };
 
@@ -38,6 +38,7 @@ const taskFormSchema = z.object({
   blockedReason: z.string().optional(),
   assignedTo: z.number().nullable().optional(),
   projectId: z.number({ required_error: "Project is required" }).nullable(),
+  milestoneId: z.number().nullable().optional(),
 }).refine(data => {
   if (data.status === "blocked" && !data.blockedReason?.trim()) return false;
   return true;
@@ -45,7 +46,11 @@ const taskFormSchema = z.object({
   .refine(data => data.projectId != null, {
     message: "Project is required",
     path: ["projectId"],
-  });
+  })
+  .refine(data => {
+    if (data.projectId != null && data.milestoneId == null) return false;
+    return true;
+  }, { message: "Milestone is required when a project is selected", path: ["milestoneId"] });
 
 type TaskFormValues = z.infer<typeof taskFormSchema>;
 
@@ -75,11 +80,31 @@ export function TaskFormDialog({
       blockedReason: task?.blockedReason ?? "",
       assignedTo: task?.assignedTo ?? null,
       projectId: task?.projectId ?? defaultProjectId ?? null,
+      milestoneId: task?.milestoneId ?? null,
     },
   });
 
   const watchStatus = form.watch("status");
+  const watchProjectId = form.watch("projectId");
   const [descEditing, setDescEditing] = useState(!task?.description);
+
+  // Fetch milestones for the selected project
+  const { data: milestones = [] } = useQuery<Milestone[]>({
+    queryKey: ["/api/projects", watchProjectId, "milestones"],
+    queryFn: () =>
+      watchProjectId != null
+        ? apiRequest("GET", `/api/projects/${watchProjectId}/milestones`).then(r => r.json())
+        : Promise.resolve([]),
+    enabled: watchProjectId != null,
+  });
+
+  // When project changes, reset milestoneId
+  const prevProjectId = form.getValues("projectId");
+  useEffect(() => {
+    if (watchProjectId !== prevProjectId) {
+      form.setValue("milestoneId", null);
+    }
+  }, [watchProjectId]);
 
   const createMutation = useMutation({
     mutationFn: (data: TaskFormValues) =>
@@ -160,7 +185,10 @@ export function TaskFormDialog({
                 <FormItem>
                   <FormLabel>Project <span className="text-destructive">*</span></FormLabel>
                   <Select
-                    onValueChange={v => field.onChange(v === "none" ? null : parseInt(v))}
+                    onValueChange={v => {
+                      field.onChange(v === "none" ? null : parseInt(v));
+                      form.setValue("milestoneId", null);
+                    }}
                     value={field.value != null ? String(field.value) : "none"}
                   >
                     <FormControl>
@@ -179,6 +207,40 @@ export function TaskFormDialog({
                 </FormItem>
               )}
             />
+
+            {/* Milestone selector — shown only when a project is selected */}
+            {watchProjectId != null && (
+              <FormField
+                control={form.control}
+                name="milestoneId"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Milestone <span className="text-destructive">*</span></FormLabel>
+                    <Select
+                      onValueChange={v => field.onChange(v === "none" ? null : parseInt(v))}
+                      value={field.value != null ? String(field.value) : "none"}
+                    >
+                      <FormControl>
+                        <SelectTrigger data-testid="select-task-milestone">
+                          <SelectValue placeholder="Select a milestone" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="none" disabled>Select a milestone</SelectItem>
+                        {milestones.length === 0 ? (
+                          <SelectItem value="__empty__" disabled>No milestones — add one to the project first</SelectItem>
+                        ) : (
+                          milestones.map(m => (
+                            <SelectItem key={m.id} value={String(m.id)}>{m.name}</SelectItem>
+                          ))
+                        )}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            )}
 
             <FormField
               control={form.control}

@@ -116,6 +116,24 @@ export const projectsTable = pgTable("projects", {
   createdBy: integer("created_by").references(() => usersTable.id),
 });
 
+// ─── Milestones ──────────────────────────────────────────────────────────────
+
+export const milestonesTable = pgTable("milestones", {
+  id: serial("id").primaryKey(),
+  projectId: integer("project_id")
+    .notNull()
+    .references(() => projectsTable.id),
+  name: text("name").notNull(),
+  description: text("description"),
+  timeline: text("timeline"),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
 // ─── Tasks ────────────────────────────────────────────────────────────────────
 
 export const tasksTable = pgTable("tasks", {
@@ -135,4 +153,5 @@ export const tasksTable = pgTable("tasks", {
   archivedAt: timestamp("archived_at", { withTimezone: true }),
   assignedTo: integer("assigned_to").references(() => usersTable.id),
   projectId: integer("project_id").references(() => projectsTable.id),
+  milestoneId: integer("milestone_id").references(() => milestonesTable.id),
 });

@@ -88,6 +88,25 @@ export type InsertProject = {
 
 export type UpdateProject = Partial<Omit<InsertProject, "createdBy">>;
 
+export type Milestone = {
+  id: number;
+  projectId: number;
+  name: string;
+  description: string | null;
+  timeline: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type InsertMilestone = {
+  projectId: number;
+  name: string;
+  description?: string | null;
+  timeline?: string | null;
+};
+
+export type UpdateMilestone = Partial<Omit<InsertMilestone, "projectId">>;
+
 export type Task = {
   id: number;
   title: string;
@@ -101,6 +120,7 @@ export type Task = {
   archivedAt: string | null;
   assignedTo: number | null;
   projectId: number | null;
+  milestoneId: number | null;
 };
 
 export type InsertTask = {
@@ -111,6 +131,7 @@ export type InsertTask = {
   createdBy?: number | null;
   assignedTo?: number | null;
   projectId?: number | null;
+  milestoneId?: number | null;
 };
 
 export type UpdateTask = Partial<Omit<InsertTask, "createdBy">>;
@@ -137,6 +158,15 @@ export const insertProjectSchema = z.object({
 
 export const updateProjectSchema = insertProjectSchema.partial().omit({ createdBy: true });
 
+export const insertMilestoneSchema = z.object({
+  projectId: z.number(),
+  name: z.string().min(1, "Name is required"),
+  description: z.string().nullable().optional(),
+  timeline: z.string().nullable().optional(),
+});
+
+export const updateMilestoneSchema = insertMilestoneSchema.partial().omit({ projectId: true });
+
 export const insertTaskSchema = z.object({
   title: z.string().min(1, "Title is required"),
   description: z.string().nullable().optional(),
@@ -145,6 +175,7 @@ export const insertTaskSchema = z.object({
   createdBy: z.number().nullable().optional(),
   assignedTo: z.number().nullable().optional(),
   projectId: z.number().nullable().optional(),
+  milestoneId: z.number().nullable().optional(),
 });
 
 export const updateTaskSchema = insertTaskSchema.partial().omit({ createdBy: true });

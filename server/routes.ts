@@ -5,9 +5,10 @@ import bcrypt from "bcrypt";
 import multer from "multer";
 import { storage } from "./storage";
 import { setupAuth, requireAuth, requireAdmin } from "./auth";
-import { registerSchema, loginSchema, insertTaskSchema, updateTaskSchema, insertProjectSchema, updateProjectSchema } from "@shared/schema";
+import { registerSchema, loginSchema, insertTaskSchema, updateTaskSchema, insertProjectSchema, updateProjectSchema, insertMilestoneSchema, updateMilestoneSchema } from "@shared/schema";
 import { listTasks, createTask, updateTask, archiveTask, restoreTask } from "./taskService";
 import { listProjects, getProject, createProject, updateProject } from "./projectService";
+import { listMilestonesByProject, getMilestone, createMilestone, updateMilestone, deleteMilestone } from "./milestoneService";
 import { chunkText, hashChunk, getEmbedding, getEmbeddings } from "./openai";
 import { handleChatMessage } from "./chatOrchestrator";
 import { validateProposal } from "./proposalSchema";
@@ -559,7 +560,18 @@ export async function registerRoutes(
     try {
       const parsed = insertProjectSchema.safeParse({ ...req.body, createdBy: req.user!.id });
       if (!parsed.success) return res.status(400).json({ message: parsed.error.errors[0].message });
-      return res.json(await createProject(parsed.data));
+      const project = await createProject(parsed.data);
+
+      // Optionally create milestones passed along with the project
+      const milestoneInputs: { name: string; description?: string; timeline?: string }[] =
+        Array.isArray(req.body.milestones) ? req.body.milestones : [];
+      for (const m of milestoneInputs) {
+        if (m.name?.trim()) {
+          await createMilestone({ projectId: project.id, name: m.name.trim(), description: m.description ?? null, timeline: m.timeline ?? null });
+        }
+      }
+
+      return res.json(project);
     } catch (err: any) {
       return res.status(400).json({ message: err.message });
     }
@@ -585,6 +597,54 @@ export async function registerRoutes(
       return res.json(all.filter(t => t.projectId === id));
     } catch (err: any) {
       return res.status(500).json({ message: err.message });
+    }
+  });
+
+  // Milestone routes (scoped to a project)
+  app.get("/api/projects/:id/milestones", requireAuth, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ message: "Invalid project id" });
+      return res.json(await listMilestonesByProject(id));
+    } catch (err: any) {
+      return res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/projects/:id/milestones", requireAuth, async (req, res) => {
+    try {
+      const projectId = parseInt(req.params.id);
+      if (isNaN(projectId)) return res.status(400).json({ message: "Invalid project id" });
+      const parsed = insertMilestoneSchema.safeParse({ ...req.body, projectId });
+      if (!parsed.success) return res.status(400).json({ message: parsed.error.errors[0].message });
+      const proj = await getProject(projectId);
+      if (!proj) return res.status(404).json({ message: "Project not found" });
+      return res.json(await createMilestone(parsed.data));
+    } catch (err: any) {
+      return res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.patch("/api/milestones/:id", requireAuth, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ message: "Invalid milestone id" });
+      const parsed = updateMilestoneSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: parsed.error.errors[0].message });
+      return res.json(await updateMilestone(id, parsed.data));
+    } catch (err: any) {
+      return res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.delete("/api/milestones/:id", requireAuth, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ message: "Invalid milestone id" });
+      await deleteMilestone(id);
+      return res.json({ ok: true });
+    } catch (err: any) {
+      return res.status(400).json({ message: err.message });
     }
   });
 

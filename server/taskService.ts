@@ -3,6 +3,7 @@ import { db } from "./db";
 import { tasksTable } from "./schema";
 import type { Task, InsertTask } from "@shared/schema";
 import { getProject } from "./projectService";
+import { getMilestone } from "./milestoneService";
 
 export type TaskFilters = { archived?: boolean };
 
@@ -27,6 +28,7 @@ function mapTask(row: typeof tasksTable.$inferSelect): Task {
       : null,
     assignedTo: row.assignedTo,
     projectId: row.projectId,
+    milestoneId: row.milestoneId ?? null,
   };
 }
 
@@ -56,6 +58,18 @@ export async function createTask(input: InsertTask): Promise<Task> {
     if (!proj) throw new Error("Project not found");
   }
 
+  // Milestone validation
+  if (input.projectId != null && input.milestoneId == null) {
+    throw new Error("A milestone is required when a project is selected");
+  }
+  if (input.milestoneId != null) {
+    const ms = await getMilestone(input.milestoneId);
+    if (!ms) throw new Error("Milestone not found");
+    if (ms.projectId !== input.projectId) {
+      throw new Error("Milestone does not belong to the selected project");
+    }
+  }
+
   const [row] = await db
     .insert(tasksTable)
     .values({
@@ -67,6 +81,7 @@ export async function createTask(input: InsertTask): Promise<Task> {
       createdBy: input.createdBy ?? null,
       assignedTo: input.assignedTo ?? null,
       projectId: input.projectId ?? null,
+      milestoneId: input.milestoneId ?? null,
     })
     .returning();
   return mapTask(row);
@@ -96,6 +111,26 @@ export async function updateTask(id: number, input: Partial<InsertTask>): Promis
     if (!proj) throw new Error("Project not found");
   }
 
+  // Only validate milestone consistency when projectId or milestoneId is being explicitly changed
+  const changingProject = input.projectId !== undefined;
+  const changingMilestone = input.milestoneId !== undefined;
+
+  if (changingProject || changingMilestone) {
+    const effectiveProjectId = input.projectId !== undefined ? input.projectId : existing.projectId;
+    const effectiveMilestoneId = input.milestoneId !== undefined ? input.milestoneId : existing.milestoneId;
+
+    if (effectiveProjectId != null && effectiveMilestoneId == null) {
+      throw new Error("A milestone is required when a project is selected");
+    }
+    if (effectiveMilestoneId != null) {
+      const ms = await getMilestone(effectiveMilestoneId);
+      if (!ms) throw new Error("Milestone not found");
+      if (ms.projectId !== effectiveProjectId) {
+        throw new Error("Milestone does not belong to the selected project");
+      }
+    }
+  }
+
   const set: Partial<typeof tasksTable.$inferInsert> & { updatedAt: Date } = {
     updatedAt: new Date(),
   };
@@ -109,6 +144,7 @@ export async function updateTask(id: number, input: Partial<InsertTask>): Promis
   if (input.blockedReason !== undefined) set.blockedReason = input.blockedReason;
   if (input.assignedTo !== undefined) set.assignedTo = input.assignedTo;
   if (input.projectId !== undefined) set.projectId = input.projectId;
+  if (input.milestoneId !== undefined) set.milestoneId = input.milestoneId;
 
   const [updated] = await db
     .update(tasksTable)

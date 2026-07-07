@@ -9,7 +9,8 @@ import { useTheme } from "@/components/theme-provider";
 import { useAuth } from "@/lib/auth";
 import {
   Plus, Loader2, Pencil, FolderOpen, Sun, Moon, LogOut,
-  Zap, BookOpen, Settings, PanelLeft, CalendarDays, AlignLeft, ExternalLink
+  Zap, BookOpen, Settings, PanelLeft, CalendarDays, AlignLeft, ExternalLink,
+  Flag, Trash2, Check, X
 } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
@@ -21,7 +22,7 @@ import {
 import {
   Form, FormControl, FormField, FormItem, FormLabel, FormMessage
 } from "@/components/ui/form";
-import type { Project, Task } from "@shared/schema";
+import type { Project, Task, Milestone } from "@shared/schema";
 import { AppSidebar } from "@/components/app-sidebar";
 import { TaskFormDialog } from "@/components/task-form-dialog";
 
@@ -33,6 +34,8 @@ const projectFormSchema = z.object({
   timeline: z.string().optional(),
 });
 type ProjectFormValues = z.infer<typeof projectFormSchema>;
+
+type MilestoneDraft = { name: string; description: string; timeline: string };
 
 function ProjectFormDialog({
   open,
@@ -55,9 +58,23 @@ function ProjectFormDialog({
     },
   });
 
+  // Milestone drafts (only for new projects)
+  const [milestones, setMilestones] = useState<MilestoneDraft[]>([]);
+  const [newMs, setNewMs] = useState<MilestoneDraft>({ name: "", description: "", timeline: "" });
+
+  function addMilestone() {
+    if (!newMs.name.trim()) return;
+    setMilestones(prev => [...prev, { ...newMs }]);
+    setNewMs({ name: "", description: "", timeline: "" });
+  }
+
+  function removeMilestone(idx: number) {
+    setMilestones(prev => prev.filter((_, i) => i !== idx));
+  }
+
   const createMutation = useMutation({
     mutationFn: (data: ProjectFormValues) =>
-      apiRequest("POST", "/api/projects", data).then(r => r.json()),
+      apiRequest("POST", "/api/projects", { ...data, milestones }).then(r => r.json()),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
       toast({ title: "Project created" });
@@ -90,7 +107,7 @@ function ProjectFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={v => !v && onClose()}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{isEdit ? "Edit project" : "New project"}</DialogTitle>
           <DialogDescription className="sr-only">
@@ -138,6 +155,48 @@ function ProjectFormDialog({
                 </FormItem>
               )}
             />
+
+            {/* Milestones section — only shown when creating a new project */}
+            {!isEdit && (
+              <div className="space-y-2 pt-1">
+                <p className="text-sm font-medium">Milestones</p>
+                {milestones.length > 0 && (
+                  <div className="space-y-1">
+                    {milestones.map((m, i) => (
+                      <div key={i} className="flex items-center gap-2 bg-muted/50 rounded-lg px-3 py-2 text-sm">
+                        <Flag className="w-3.5 h-3.5 text-primary shrink-0" />
+                        <span className="flex-1 truncate font-medium">{m.name}</span>
+                        {m.timeline && <span className="text-xs text-muted-foreground shrink-0">{m.timeline}</span>}
+                        <button type="button" onClick={() => removeMilestone(i)} className="p-0.5 hover:text-destructive transition-colors">
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <div className="border rounded-lg p-3 space-y-2 bg-muted/20">
+                  <Input
+                    placeholder="Milestone name"
+                    value={newMs.name}
+                    onChange={e => setNewMs(p => ({ ...p, name: e.target.value }))}
+                    onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); addMilestone(); } }}
+                  />
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder="Timeline (optional)"
+                      value={newMs.timeline}
+                      onChange={e => setNewMs(p => ({ ...p, timeline: e.target.value }))}
+                      className="flex-1"
+                    />
+                    <Button type="button" variant="outline" size="sm" onClick={addMilestone} disabled={!newMs.name.trim()}>
+                      <Plus className="w-3.5 h-3.5 mr-1" />
+                      Add
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <DialogFooter>
               <Button type="button" variant="ghost" onClick={onClose}>Cancel</Button>
               <Button type="submit" disabled={isPending}>
@@ -149,6 +208,173 @@ function ProjectFormDialog({
         </Form>
       </DialogContent>
     </Dialog>
+  );
+}
+
+// ─── Milestone inline manager (on the card) ───────────────────────────────────
+
+function MilestoneManager({ project }: { project: Project }) {
+  const { toast } = useToast();
+  const [addingNew, setAddingNew] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [newTimeline, setNewTimeline] = useState("");
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editTimeline, setEditTimeline] = useState("");
+
+  const { data: milestones = [], isLoading } = useQuery<Milestone[]>({
+    queryKey: ["/api/projects", project.id, "milestones"],
+    queryFn: () => apiRequest("GET", `/api/projects/${project.id}/milestones`).then(r => r.json()),
+  });
+
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ["/api/projects", project.id, "milestones"] });
+
+  const createMs = useMutation({
+    mutationFn: (data: { name: string; timeline?: string }) =>
+      apiRequest("POST", `/api/projects/${project.id}/milestones`, data).then(r => r.json()),
+    onSuccess: () => { invalidate(); setAddingNew(false); setNewName(""); setNewTimeline(""); },
+    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const updateMs = useMutation({
+    mutationFn: ({ id, name, timeline }: { id: number; name: string; timeline: string }) =>
+      apiRequest("PATCH", `/api/milestones/${id}`, { name, timeline: timeline || null }).then(r => r.json()),
+    onSuccess: () => { invalidate(); setEditingId(null); },
+    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const deleteMs = useMutation({
+    mutationFn: (id: number) => apiRequest("DELETE", `/api/milestones/${id}`).then(r => r.json()),
+    onSuccess: () => {
+      invalidate();
+      // Also refresh tasks since milestone references may be cleared
+      queryClient.invalidateQueries({ queryKey: ["/api/tasks"] });
+    },
+    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  function startEdit(m: Milestone) {
+    setEditingId(m.id);
+    setEditName(m.name);
+    setEditTimeline(m.timeline ?? "");
+  }
+
+  function cancelEdit() { setEditingId(null); }
+
+  return (
+    <div className="border-t pt-3 flex flex-col gap-1">
+      <div className="flex items-center justify-between mb-1">
+        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+          Milestones ({milestones.length})
+        </p>
+        <button
+          onClick={() => setAddingNew(v => !v)}
+          className="text-xs text-primary hover:underline flex items-center gap-1"
+        >
+          <Plus className="w-3 h-3" />
+          Add
+        </button>
+      </div>
+
+      {isLoading && <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground mx-auto" />}
+
+      {milestones.map(m => (
+        <div key={m.id} className="rounded-lg px-2 py-1.5 hover:bg-muted/50 transition-colors group">
+          {editingId === m.id ? (
+            <div className="flex flex-col gap-1.5">
+              <Input
+                value={editName}
+                onChange={e => setEditName(e.target.value)}
+                className="h-7 text-xs"
+                autoFocus
+              />
+              <div className="flex gap-1">
+                <Input
+                  placeholder="Timeline"
+                  value={editTimeline}
+                  onChange={e => setEditTimeline(e.target.value)}
+                  className="h-7 text-xs flex-1"
+                />
+                <button
+                  onClick={() => updateMs.mutate({ id: m.id, name: editName, timeline: editTimeline })}
+                  disabled={!editName.trim() || updateMs.isPending}
+                  className="p-1 text-green-600 hover:bg-green-50 rounded transition-colors"
+                >
+                  <Check className="w-3.5 h-3.5" />
+                </button>
+                <button onClick={cancelEdit} className="p-1 text-muted-foreground hover:bg-muted rounded transition-colors">
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2">
+              <Flag className="w-3 h-3 text-primary shrink-0" />
+              <span className="text-sm flex-1 truncate">{m.name}</span>
+              {m.timeline && <span className="text-xs text-muted-foreground shrink-0">{m.timeline}</span>}
+              <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                <button
+                  onClick={() => startEdit(m)}
+                  className="p-0.5 hover:text-foreground text-muted-foreground transition-colors"
+                  title="Rename milestone"
+                >
+                  <Pencil className="w-3 h-3" />
+                </button>
+                <button
+                  onClick={() => {
+                    if (confirm(`Remove milestone "${m.name}"? Tasks assigned to it will have their milestone cleared.`)) {
+                      deleteMs.mutate(m.id);
+                    }
+                  }}
+                  className="p-0.5 hover:text-destructive text-muted-foreground transition-colors"
+                  title="Remove milestone"
+                >
+                  <Trash2 className="w-3 h-3" />
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      ))}
+
+      {milestones.length === 0 && !isLoading && !addingNew && (
+        <p className="text-xs text-muted-foreground italic">No milestones yet</p>
+      )}
+
+      {addingNew && (
+        <div className="border rounded-lg p-2 space-y-1.5 bg-muted/20 mt-1">
+          <Input
+            placeholder="Milestone name"
+            value={newName}
+            onChange={e => setNewName(e.target.value)}
+            className="h-7 text-xs"
+            autoFocus
+            onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); if (newName.trim()) createMs.mutate({ name: newName, timeline: newTimeline || undefined }); } }}
+          />
+          <div className="flex gap-1">
+            <Input
+              placeholder="Timeline (optional)"
+              value={newTimeline}
+              onChange={e => setNewTimeline(e.target.value)}
+              className="h-7 text-xs flex-1"
+            />
+            <button
+              onClick={() => { if (newName.trim()) createMs.mutate({ name: newName, timeline: newTimeline || undefined }); }}
+              disabled={!newName.trim() || createMs.isPending}
+              className="px-2 py-1 bg-primary text-primary-foreground rounded text-xs hover:bg-primary/90 transition-colors disabled:opacity-50"
+            >
+              {createMs.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
+            </button>
+            <button
+              onClick={() => { setAddingNew(false); setNewName(""); setNewTimeline(""); }}
+              className="px-2 py-1 rounded text-xs text-muted-foreground hover:bg-muted transition-colors"
+            >
+              <X className="w-3 h-3" />
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -212,6 +438,9 @@ function ProjectCard({
           <span>{project.timeline}</span>
         </div>
       )}
+
+      {/* milestones */}
+      <MilestoneManager project={project} />
 
       {/* tasks */}
       <div className="border-t pt-3 flex flex-col gap-1">
