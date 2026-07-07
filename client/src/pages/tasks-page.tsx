@@ -17,6 +17,7 @@ import {
 import type { Task, Project, Milestone } from "@shared/schema";
 import { AppSidebar } from "@/components/app-sidebar";
 import { TaskFormDialog } from "@/components/task-form-dialog";
+import { TaskDetailPanel } from "@/components/task-detail-panel";
 
 type AppUser = { id: number; displayName: string; email: string };
 
@@ -325,101 +326,115 @@ export default function TasksPage() {
           )}
         </div>
 
-        <div className="flex-1 overflow-auto p-6">
-          {isLoading ? (
-            <div className="flex items-center justify-center h-40">
-              <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
-            </div>
-          ) : showArchived ? (
-            <div>
-              {filteredTasks.length === 0 ? (
-                <div className="text-center py-20 text-muted-foreground text-sm">No archived tasks</div>
-              ) : (
-                <div className="max-w-xl space-y-2">
-                  {filteredTasks.map(task => (
-                    <ArchivedTaskCard
-                      key={task.id}
-                      task={task}
-                      onRestore={() => restoreMutation.mutate(task.id)}
-                    />
-                  ))}
-                </div>
-              )}
-            </div>
-          ) : (
-            <div className="flex gap-4 min-w-[680px] items-start h-full">
-              {STATUSES.map(status => {
-                const columnTasks = byStatus(status.value);
-                const Icon = status.icon;
-                const isOver = dragOverColumn === status.value;
-                return (
-                  <div
-                    key={status.value}
-                    data-testid={`column-${status.value}`}
-                    className={`flex-1 min-w-0 flex flex-col rounded-xl border-2 transition-colors ${status.columnBg} ${
-                      isOver ? "border-primary/60 shadow-md" : status.columnBorder
-                    }`}
-                    onDragOver={e => { e.preventDefault(); setDragOverColumn(status.value); }}
-                    onDragLeave={e => {
-                      if (!e.currentTarget.contains(e.relatedTarget as Node)) {
-                        setDragOverColumn(null);
-                      }
-                    }}
-                    onDrop={e => {
-                      e.preventDefault();
-                      setDragOverColumn(null);
-                      const taskId = parseInt(e.dataTransfer.getData("taskId"));
-                      if (!isNaN(taskId)) handleDrop(taskId, status.value);
-                    }}
-                  >
-                    <div className="px-4 pt-4 pb-3 flex items-center gap-2">
-                      <Icon className={`w-4 h-4 ${status.headerColor}`} />
-                      <span className={`text-sm font-semibold ${status.headerColor}`}>{status.label}</span>
-                      <span className="ml-auto text-xs text-muted-foreground bg-white/60 dark:bg-black/20 rounded-full px-2 py-0.5 font-medium">
-                        {columnTasks.length}
-                      </span>
-                    </div>
-                    <div className="flex flex-col gap-2 px-3 pb-4 min-h-[120px]">
-                      {columnTasks.length === 0 ? (
-                        <div className={`border-2 border-dashed rounded-lg p-4 text-center text-xs text-muted-foreground/60 transition-colors ${
-                          isOver ? "border-primary/40 bg-primary/5" : "border-transparent"
-                        }`}>
-                          Drop here
-                        </div>
-                      ) : (
-                        columnTasks.map(task => (
-                          <TaskCard
-                            key={task.id}
-                            task={task}
-                            users={users}
-                            milestones={milestones}
-                            onClick={() => setEditTask(task)}
-                            onDragStart={e => {
-                              e.dataTransfer.setData("taskId", String(task.id));
-                              e.dataTransfer.effectAllowed = "move";
-                              setDraggingTaskId(task.id);
-                            }}
-                            onDragEnd={() => {
-                              setDraggingTaskId(null);
-                              setDragOverColumn(null);
-                            }}
-                          />
-                        ))
-                      )}
-                    </div>
+        {/* Split container: board + detail panel side by side */}
+        <div className="flex-1 flex overflow-hidden">
+          {/* Board / archived area */}
+          <div className="flex-1 overflow-auto p-6 transition-all duration-300">
+            {isLoading ? (
+              <div className="flex items-center justify-center h-40">
+                <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+              </div>
+            ) : showArchived ? (
+              <div>
+                {filteredTasks.length === 0 ? (
+                  <div className="text-center py-20 text-muted-foreground text-sm">No archived tasks</div>
+                ) : (
+                  <div className="max-w-xl space-y-2">
+                    {filteredTasks.map(task => (
+                      <ArchivedTaskCard
+                        key={task.id}
+                        task={task}
+                        onRestore={() => restoreMutation.mutate(task.id)}
+                      />
+                    ))}
                   </div>
-                );
-              })}
-            </div>
-          )}
+                )}
+              </div>
+            ) : (
+              <div className="flex gap-4 min-w-[480px] items-start h-full">
+                {STATUSES.map(status => {
+                  const columnTasks = byStatus(status.value);
+                  const Icon = status.icon;
+                  const isOver = dragOverColumn === status.value;
+                  return (
+                    <div
+                      key={status.value}
+                      data-testid={`column-${status.value}`}
+                      className={`flex-1 min-w-0 flex flex-col rounded-xl border-2 transition-colors ${status.columnBg} ${
+                        isOver ? "border-primary/60 shadow-md" : status.columnBorder
+                      }`}
+                      onDragOver={e => { e.preventDefault(); setDragOverColumn(status.value); }}
+                      onDragLeave={e => {
+                        if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                          setDragOverColumn(null);
+                        }
+                      }}
+                      onDrop={e => {
+                        e.preventDefault();
+                        setDragOverColumn(null);
+                        const taskId = parseInt(e.dataTransfer.getData("taskId"));
+                        if (!isNaN(taskId)) handleDrop(taskId, status.value);
+                      }}
+                    >
+                      <div className="px-4 pt-4 pb-3 flex items-center gap-2">
+                        <Icon className={`w-4 h-4 ${status.headerColor}`} />
+                        <span className={`text-sm font-semibold ${status.headerColor}`}>{status.label}</span>
+                        <span className="ml-auto text-xs text-muted-foreground bg-white/60 dark:bg-black/20 rounded-full px-2 py-0.5 font-medium">
+                          {columnTasks.length}
+                        </span>
+                      </div>
+                      <div className="flex flex-col gap-2 px-3 pb-4 min-h-[120px]">
+                        {columnTasks.length === 0 ? (
+                          <div className={`border-2 border-dashed rounded-lg p-4 text-center text-xs text-muted-foreground/60 transition-colors ${
+                            isOver ? "border-primary/40 bg-primary/5" : "border-transparent"
+                          }`}>
+                            Drop here
+                          </div>
+                        ) : (
+                          columnTasks.map(task => (
+                            <TaskCard
+                              key={task.id}
+                              task={task}
+                              users={users}
+                              milestones={milestones}
+                              onClick={() => setEditTask(task)}
+                              onDragStart={e => {
+                                e.dataTransfer.setData("taskId", String(task.id));
+                                e.dataTransfer.effectAllowed = "move";
+                                setDraggingTaskId(task.id);
+                              }}
+                              onDragEnd={() => {
+                                setDraggingTaskId(null);
+                                setDragOverColumn(null);
+                              }}
+                            />
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Right-side detail panel — slides in when a task is selected */}
+          <div
+            className={`shrink-0 transition-all duration-300 ease-in-out overflow-hidden
+              ${editTask ? "w-full sm:w-[420px] lg:w-[480px]" : "w-0"}`}
+          >
+            {editTask && (
+              <TaskDetailPanel
+                task={editTask}
+                onClose={() => setEditTask(null)}
+              />
+            )}
+          </div>
         </div>
       </div>
 
       {createOpen && (
         <TaskFormDialog open={createOpen} onClose={() => setCreateOpen(false)} />
-      )}
-      {editTask && (
-        <TaskFormDialog open={!!editTask} onClose={() => setEditTask(null)} task={editTask} />
       )}
     </div>
   );
