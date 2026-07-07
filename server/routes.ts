@@ -5,8 +5,9 @@ import bcrypt from "bcrypt";
 import multer from "multer";
 import { storage } from "./storage";
 import { setupAuth, requireAuth, requireAdmin } from "./auth";
-import { registerSchema, loginSchema, insertTaskSchema, updateTaskSchema } from "@shared/schema";
+import { registerSchema, loginSchema, insertTaskSchema, updateTaskSchema, insertProjectSchema, updateProjectSchema } from "@shared/schema";
 import { listTasks, createTask, updateTask, archiveTask, restoreTask } from "./taskService";
+import { listProjects, getProject, createProject, updateProject } from "./projectService";
 import { chunkText, hashChunk, getEmbedding, getEmbeddings } from "./openai";
 import { handleChatMessage } from "./chatOrchestrator";
 import { validateProposal } from "./proposalSchema";
@@ -540,6 +541,48 @@ export async function registerRoutes(
         created++;
       }
       return res.json({ created });
+    } catch (err: any) {
+      return res.status(500).json({ message: err.message });
+    }
+  });
+
+  // Project routes
+  app.get("/api/projects", requireAuth, async (req, res) => {
+    try {
+      return res.json(await listProjects());
+    } catch (err: any) {
+      return res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/projects", requireAuth, async (req, res) => {
+    try {
+      const parsed = insertProjectSchema.safeParse({ ...req.body, createdBy: req.user!.id });
+      if (!parsed.success) return res.status(400).json({ message: parsed.error.errors[0].message });
+      return res.json(await createProject(parsed.data));
+    } catch (err: any) {
+      return res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.patch("/api/projects/:id", requireAuth, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ message: "Invalid project id" });
+      const parsed = updateProjectSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: parsed.error.errors[0].message });
+      return res.json(await updateProject(id, parsed.data));
+    } catch (err: any) {
+      return res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/projects/:id/tasks", requireAuth, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ message: "Invalid project id" });
+      const all = await listTasks({ archived: false });
+      return res.json(all.filter(t => t.projectId === id));
     } catch (err: any) {
       return res.status(500).json({ message: err.message });
     }

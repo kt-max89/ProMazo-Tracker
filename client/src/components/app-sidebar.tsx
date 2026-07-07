@@ -1,7 +1,7 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Link, useLocation } from "wouter";
-import { Plus, Loader2, MessageSquare, Trash2, PanelLeftClose, LayoutList } from "lucide-react";
+import { Plus, Loader2, MessageSquare, Trash2, PanelLeftClose, LayoutList, FolderOpen } from "lucide-react";
 
 type ChatSession = {
   id: number;
@@ -14,7 +14,7 @@ type ChatSession = {
 interface AppSidebarProps {
   open: boolean;
   onToggle: (open: boolean) => void;
-  activePage: "chat" | "tasks";
+  activePage: "chat" | "tasks" | "projects";
   activeSessionId?: number | null;
   onSelectSession?: (id: number) => void;
   onDeleteSession?: (e: React.MouseEvent, id: number) => void;
@@ -46,7 +46,7 @@ export function AppSidebar({
   if (!open) return null;
 
   function handleSessionClick(id: number) {
-    if (activePage === "tasks") {
+    if (activePage === "tasks" || activePage === "projects") {
       navigate("/");
     } else {
       onSelectSession?.(id);
@@ -63,7 +63,7 @@ export function AppSidebar({
   }
 
   function handleNewChat() {
-    if (activePage === "tasks") {
+    if (activePage === "tasks" || activePage === "projects") {
       navigate("/");
     } else {
       onNewChat?.();
@@ -74,23 +74,38 @@ export function AppSidebar({
     <aside className="w-64 border-r flex flex-col shrink-0 bg-card" data-testid="sidebar">
       <div className="p-3 border-b flex flex-col gap-2">
         <div className="flex items-center gap-2">
-          <Link href="/tasks" className="flex-1">
-            <button
-              data-testid="link-sidebar-tasks"
-              className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                activePage === "tasks"
-                  ? "bg-primary/10 text-primary"
-                  : "hover:bg-muted text-foreground"
-              }`}
-            >
-              <LayoutList className="w-4 h-4" />
-              See Tasks
-            </button>
-          </Link>
+          <div className="flex-1 flex flex-col gap-1">
+            <Link href="/tasks">
+              <button
+                data-testid="link-sidebar-tasks"
+                className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  activePage === "tasks"
+                    ? "bg-primary/10 text-primary"
+                    : "hover:bg-muted text-foreground"
+                }`}
+              >
+                <LayoutList className="w-4 h-4" />
+                See Tasks
+              </button>
+            </Link>
+            <Link href="/projects">
+              <button
+                data-testid="link-sidebar-projects"
+                className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  activePage === "projects"
+                    ? "bg-primary/10 text-primary"
+                    : "hover:bg-muted text-foreground"
+                }`}
+              >
+                <FolderOpen className="w-4 h-4" />
+                See Projects
+              </button>
+            </Link>
+          </div>
           <button
             data-testid="button-close-sidebar"
             onClick={() => onToggle(false)}
-            className="p-2 rounded-lg hover:bg-muted transition-colors shrink-0"
+            className="p-2 rounded-lg hover:bg-muted transition-colors shrink-0 self-start mt-1"
             title="Close sidebar"
           >
             <PanelLeftClose className="w-4 h-4" />

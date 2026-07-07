@@ -69,6 +69,25 @@ export type InsertChatMessage = {
   content: string;
 };
 
+export type Project = {
+  id: number;
+  name: string;
+  description: string | null;
+  timeline: string | null;
+  createdAt: string;
+  updatedAt: string;
+  createdBy: number | null;
+};
+
+export type InsertProject = {
+  name: string;
+  description?: string | null;
+  timeline?: string | null;
+  createdBy?: number | null;
+};
+
+export type UpdateProject = Partial<Omit<InsertProject, "createdBy">>;
+
 export type Task = {
   id: number;
   title: string;
@@ -81,6 +100,7 @@ export type Task = {
   createdBy: number | null;
   archivedAt: string | null;
   assignedTo: number | null;
+  projectId: number | null;
 };
 
 export type InsertTask = {
@@ -90,6 +110,7 @@ export type InsertTask = {
   blockedReason?: string | null;
   createdBy?: number | null;
   assignedTo?: number | null;
+  projectId?: number | null;
 };
 
 export type UpdateTask = Partial<Omit<InsertTask, "createdBy">>;
@@ -107,6 +128,15 @@ export const loginSchema = z.object({
   password: z.string().min(1, "Password is required"),
 });
 
+export const insertProjectSchema = z.object({
+  name: z.string().min(1, "Name is required"),
+  description: z.string().nullable().optional(),
+  timeline: z.string().nullable().optional(),
+  createdBy: z.number().nullable().optional(),
+});
+
+export const updateProjectSchema = insertProjectSchema.partial().omit({ createdBy: true });
+
 export const insertTaskSchema = z.object({
   title: z.string().min(1, "Title is required"),
   description: z.string().nullable().optional(),
@@ -114,6 +144,7 @@ export const insertTaskSchema = z.object({
   blockedReason: z.string().nullable().optional(),
   createdBy: z.number().nullable().optional(),
   assignedTo: z.number().nullable().optional(),
+  projectId: z.number().nullable().optional(),
 });
 
 export const updateTaskSchema = insertTaskSchema.partial().omit({ createdBy: true });

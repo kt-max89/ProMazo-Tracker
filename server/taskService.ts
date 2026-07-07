@@ -1,4 +1,5 @@
 import type { Task, InsertTask } from "@shared/schema";
+import { getProject } from "./projectService";
 
 export type TaskFilters = { archived?: boolean };
 
@@ -24,6 +25,10 @@ export async function createTask(input: InsertTask): Promise<Task> {
   if (input.status === "blocked" && !input.blockedReason?.trim()) {
     throw new Error("Blocked reason is required when status is blocked");
   }
+  if (input.projectId != null) {
+    const proj = await getProject(input.projectId);
+    if (!proj) throw new Error("Project not found");
+  }
   const now = new Date().toISOString();
   const task: Task = {
     id: nextId++,
@@ -37,6 +42,7 @@ export async function createTask(input: InsertTask): Promise<Task> {
     createdBy: input.createdBy ?? null,
     archivedAt: null,
     assignedTo: input.assignedTo ?? null,
+    projectId: input.projectId ?? null,
   };
   taskStore.push(task);
   return task;
@@ -59,6 +65,11 @@ export async function updateTask(id: number, input: Partial<InsertTask>): Promis
     if (!reason?.trim()) {
       throw new Error("Blocked reason is required when status is blocked");
     }
+  }
+
+  if (input.projectId != null) {
+    const proj = await getProject(input.projectId);
+    if (!proj) throw new Error("Project not found");
   }
 
   const updates: Partial<Task> = { ...input } as any;
