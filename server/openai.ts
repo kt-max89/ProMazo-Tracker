@@ -45,7 +45,7 @@ export async function* streamChatCompletion(
     messages: [
       {
         role: "system",
-        content: `Your name is Zeus. You are an internal task tracker Agent for the ProMazo national team. ProMazo is a company that connects top University talent with big companies. You help plan, ideate, and track tasks. You are a helpful assistant.
+        content: `You are an internal task tracker agent for the ProMazo national team. ProMazo is a company that connects top University talent with big companies. You help plan, ideate, and track tasks. You are a helpful assistant.
 
 Follow these rules strictly:
 

@@ -1,6 +1,25 @@
-import { eq, inArray, sql, and, desc } from "drizzle-orm";
-import { db } from "./db";
-import { users, documents, chunks, citations, chatSessions, chatMessages, type User, type InsertUser, type Document, type Chunk, type Citation, type ChatSession, type InsertChatSession, type ChatMessage, type InsertChatMessage } from "@shared/schema";
+import type {
+  User, InsertUser,
+  Document, Chunk, Citation,
+  ChatSession, InsertChatSession,
+  ChatMessage, InsertChatMessage,
+} from "@shared/schema";
+
+// ─── Cosine similarity helper ─────────────────────────────────────────────────
+
+function cosineSimilarity(a: number[], b: number[]): number {
+  if (a.length !== b.length || a.length === 0) return 0;
+  let dot = 0, normA = 0, normB = 0;
+  for (let i = 0; i < a.length; i++) {
+    dot += a[i] * b[i];
+    normA += a[i] * a[i];
+    normB += b[i] * b[i];
+  }
+  if (normA === 0 || normB === 0) return 0;
+  return dot / (Math.sqrt(normA) * Math.sqrt(normB));
+}
+
+// ─── Storage interface ────────────────────────────────────────────────────────
 
 export interface IStorage {
   getUser(id: number): Promise<User | undefined>;
@@ -21,6 +40,7 @@ export interface IStorage {
 
   createCitation(citation: Omit<Citation, "id">): Promise<Citation>;
   getCitationsByUserId(userId: number): Promise<(Citation & { documentTitle: string })[]>;
+  deleteCitationsByDocumentId(documentId: number): Promise<void>;
 
   getAccessibleDocumentIds(user: User): Promise<number[]>;
 
@@ -35,178 +55,214 @@ export interface IStorage {
   getChatMessagesBySessionId(sessionId: number): Promise<ChatMessage[]>;
 }
 
-export class DatabaseStorage implements IStorage {
+// ─── In-memory implementation ─────────────────────────────────────────────────
+
+class MemoryStorage implements IStorage {
+  private users = new Map<number, User>();
+  private documents = new Map<number, Document>();
+  private chunks = new Map<number, Chunk>();
+  private citations = new Map<number, Citation>();
+  private chatSessions = new Map<number, ChatSession>();
+  private chatMessages = new Map<number, ChatMessage>();
+
+  private nextId = {
+    users: 1, documents: 1, chunks: 1,
+    citations: 1, chatSessions: 1, chatMessages: 1,
+  };
+
+  // ── Users ──────────────────────────────────────────────────────────────────
+
   async getUser(id: number): Promise<User | undefined> {
-    const [user] = await db.select().from(users).where(eq(users.id, id));
-    return user;
+    return this.users.get(id);
   }
 
   async getUserByEmail(email: string): Promise<User | undefined> {
-    const [user] = await db.select().from(users).where(eq(users.email, email));
-    return user;
+    return Array.from(this.users.values()).find(
+      u => u.email.toLowerCase() === email.toLowerCase()
+    );
   }
 
   async createUser(user: InsertUser): Promise<User> {
-    const [created] = await db.insert(users).values(user).returning();
+    const id = this.nextId.users++;
+    const created: User = { ...user, id };
+    this.users.set(id, created);
     return created;
   }
 
   async getAllUsers(): Promise<User[]> {
-    return db.select().from(users);
+    return Array.from(this.users.values());
   }
 
+  // ── Documents ──────────────────────────────────────────────────────────────
+
   async createDocument(doc: Omit<Document, "id">): Promise<Document> {
-    const [created] = await db.insert(documents).values(doc).returning();
+    const id = this.nextId.documents++;
+    const created: Document = { ...doc, id };
+    this.documents.set(id, created);
     return created;
   }
 
   async getDocument(id: number): Promise<Document | undefined> {
-    const [doc] = await db.select().from(documents).where(eq(documents.id, id));
-    return doc;
+    return this.documents.get(id);
   }
 
   async getAllDocuments(): Promise<Document[]> {
-    return db.select().from(documents);
+    return Array.from(this.documents.values());
   }
 
   async updateDocument(id: number, updates: Partial<Document>): Promise<Document | undefined> {
-    const [updated] = await db.update(documents).set(updates).where(eq(documents.id, id)).returning();
+    const doc = this.documents.get(id);
+    if (!doc) return undefined;
+    const updated = { ...doc, ...updates };
+    this.documents.set(id, updated);
     return updated;
   }
 
   async deleteDocument(id: number): Promise<void> {
-    await db.delete(documents).where(eq(documents.id, id));
+    this.documents.delete(id);
   }
 
+  // ── Chunks ─────────────────────────────────────────────────────────────────
+
   async getChunksByDocumentId(documentId: number): Promise<Chunk[]> {
-    return db.select().from(chunks).where(eq(chunks.documentId, documentId));
+    return Array.from(this.chunks.values()).filter(c => c.documentId === documentId);
   }
 
   async deleteChunksByDocumentId(documentId: number): Promise<void> {
-    await db.delete(chunks).where(eq(chunks.documentId, documentId));
+    for (const [id, chunk] of Array.from(this.chunks.entries())) {
+      if (chunk.documentId === documentId) this.chunks.delete(id);
+    }
   }
 
   async insertChunks(chunkData: Omit<Chunk, "id">[]): Promise<void> {
-    if (chunkData.length === 0) return;
-    await db.insert(chunks).values(chunkData);
+    for (const data of chunkData) {
+      const id = this.nextId.chunks++;
+      this.chunks.set(id, { ...data, id });
+    }
   }
 
-  async searchSimilarChunks(embedding: number[], documentIds: number[], limit: number): Promise<(Chunk & { similarity: number })[]> {
-    if (documentIds.length === 0) return [];
-    
-    const embeddingStr = `[${embedding.join(",")}]`;
-    const docIdsArray = `{${documentIds.join(",")}}`;
-    const result = await db.execute(sql`
-      SELECT id, document_id, chunk_index, chunk_text, chunk_hash, embedding,
-             1 - (embedding <=> ${embeddingStr}::vector) as similarity
-      FROM chunks
-      WHERE document_id = ANY(${docIdsArray}::int[])
-        AND embedding IS NOT NULL
-      ORDER BY embedding <=> ${embeddingStr}::vector
-      LIMIT ${limit}
-    `);
-    
-    return (result.rows as any[]).map(row => ({
-      id: row.id,
-      documentId: row.document_id,
-      chunkIndex: row.chunk_index,
-      chunkText: row.chunk_text,
-      chunkHash: row.chunk_hash,
-      embedding: row.embedding,
-      similarity: parseFloat(row.similarity),
-    }));
+  async searchSimilarChunks(
+    embedding: number[],
+    documentIds: number[],
+    limit: number,
+  ): Promise<(Chunk & { similarity: number })[]> {
+    const docSet = new Set(documentIds);
+    const results: (Chunk & { similarity: number })[] = [];
+
+    for (const chunk of Array.from(this.chunks.values())) {
+      if (!docSet.has(chunk.documentId)) continue;
+      if (!chunk.embedding) continue;
+      const similarity = cosineSimilarity(embedding, chunk.embedding);
+      results.push({ ...chunk, similarity });
+    }
+
+    results.sort((a, b) => b.similarity - a.similarity);
+    return results.slice(0, limit);
   }
 
-  async deleteCitationsByDocumentId(documentId: number): Promise<void> {
-    await db.delete(citations).where(eq(citations.documentId, documentId));
-  }
+  // ── Citations ──────────────────────────────────────────────────────────────
 
   async createCitation(citation: Omit<Citation, "id">): Promise<Citation> {
-    const [created] = await db.insert(citations).values(citation).returning();
+    const id = this.nextId.citations++;
+    const created: Citation = { ...citation, id };
+    this.citations.set(id, created);
     return created;
   }
 
   async getCitationsByUserId(userId: number): Promise<(Citation & { documentTitle: string })[]> {
-    const result = await db
-      .select({
-        id: citations.id,
-        userId: citations.userId,
-        documentId: citations.documentId,
-        chunkId: citations.chunkId,
-        query: citations.query,
-        createdAt: citations.createdAt,
-        documentTitle: documents.title,
-      })
-      .from(citations)
-      .innerJoin(documents, eq(citations.documentId, documents.id))
-      .where(eq(citations.userId, userId))
-      .orderBy(sql`${citations.createdAt} DESC`);
-    return result;
+    return Array.from(this.citations.values())
+      .filter(c => c.userId === userId)
+      .map(c => ({
+        ...c,
+        documentTitle: this.documents.get(c.documentId)?.title ?? "Unknown",
+      }));
   }
+
+  async deleteCitationsByDocumentId(documentId: number): Promise<void> {
+    for (const [id, c] of Array.from(this.citations.entries())) {
+      if (c.documentId === documentId) this.citations.delete(id);
+    }
+  }
+
+  // ── Accessible document IDs ────────────────────────────────────────────────
+  // Precedence (most restrictive first):
+  //   1. adminOnly → skip
+  //   2. allowedUsers non-empty → explicit user match required
+  //   3. allowedDomain set → domain match
+  //   4. both empty → public (any authenticated user)
 
   async getAccessibleDocumentIds(user: User): Promise<number[]> {
-    const allDocs = await this.getAllDocuments();
-    const userDomain = user.email.split("@")[1];
-
-    return allDocs
-      .filter(doc => {
-        if (doc.adminOnly) return user.role === "admin";
-        if (doc.allowedUsers && doc.allowedUsers.length > 0) {
-          return doc.allowedUsers.includes(user.email);
-        }
-        if (doc.allowedDomain) {
-          return userDomain === doc.allowedDomain;
-        }
-        return true;
-      })
-      .map(doc => doc.id);
+    if (user.role === "admin") {
+      return Array.from(this.documents.keys());
+    }
+    const ids: number[] = [];
+    for (const doc of Array.from(this.documents.values())) {
+      if (doc.adminOnly) continue;
+      if (doc.allowedUsers.length > 0) {
+        if (doc.allowedUsers.includes(user.email)) ids.push(doc.id);
+        continue;
+      }
+      if (doc.allowedDomain) {
+        if (user.email.endsWith(`@${doc.allowedDomain}`)) ids.push(doc.id);
+        continue;
+      }
+      // Public document — accessible to all authenticated users
+      ids.push(doc.id);
+    }
+    return ids;
   }
 
+  // ── Chat sessions ──────────────────────────────────────────────────────────
+
   async createChatSession(session: InsertChatSession): Promise<ChatSession> {
-    const [created] = await db.insert(chatSessions).values({
-      ...session,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    }).returning();
+    const id = this.nextId.chatSessions++;
+    const now = new Date().toISOString();
+    const created: ChatSession = { ...session, id, createdAt: now, updatedAt: now };
+    this.chatSessions.set(id, created);
     return created;
   }
 
   async getChatSessionsByUserId(userId: number): Promise<ChatSession[]> {
-    return db.select().from(chatSessions)
-      .where(eq(chatSessions.userId, userId))
-      .orderBy(desc(chatSessions.updatedAt));
+    return Array.from(this.chatSessions.values())
+      .filter(s => s.userId === userId)
+      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   }
 
   async getChatSession(id: number): Promise<ChatSession | undefined> {
-    const [session] = await db.select().from(chatSessions).where(eq(chatSessions.id, id));
-    return session;
+    return this.chatSessions.get(id);
   }
 
   async deleteChatSession(id: number): Promise<void> {
-    await db.delete(chatSessions).where(eq(chatSessions.id, id));
+    this.chatSessions.delete(id);
+    for (const [mid, msg] of Array.from(this.chatMessages.entries())) {
+      if (msg.sessionId === id) this.chatMessages.delete(mid);
+    }
   }
 
   async updateChatSessionTitle(id: number, title: string): Promise<void> {
-    await db.update(chatSessions).set({ title }).where(eq(chatSessions.id, id));
+    const session = this.chatSessions.get(id);
+    if (session) this.chatSessions.set(id, { ...session, title });
   }
 
   async updateChatSessionTimestamp(id: number): Promise<void> {
-    await db.update(chatSessions).set({ updatedAt: new Date().toISOString() }).where(eq(chatSessions.id, id));
+    const session = this.chatSessions.get(id);
+    if (session) this.chatSessions.set(id, { ...session, updatedAt: new Date().toISOString() });
   }
 
+  // ── Chat messages ──────────────────────────────────────────────────────────
+
   async addChatMessage(message: InsertChatMessage): Promise<ChatMessage> {
-    const [created] = await db.insert(chatMessages).values({
-      ...message,
-      createdAt: new Date().toISOString(),
-    }).returning();
+    const id = this.nextId.chatMessages++;
+    const created: ChatMessage = { ...message, id, createdAt: new Date().toISOString() };
+    this.chatMessages.set(id, created);
     return created;
   }
 
   async getChatMessagesBySessionId(sessionId: number): Promise<ChatMessage[]> {
-    return db.select().from(chatMessages)
-      .where(eq(chatMessages.sessionId, sessionId))
-      .orderBy(chatMessages.createdAt);
+    return Array.from(this.chatMessages.values())
+      .filter(m => m.sessionId === sessionId)
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
   }
 }
 
-export const storage = new DatabaseStorage();
+export const storage = new MemoryStorage();

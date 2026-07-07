@@ -378,7 +378,7 @@ export default function ChatPage() {
               </button>
             )}
             <Zap className="w-5 h-5 text-primary" />
-            <h1 className="font-semibold text-lg">Zeus - ProMazo National Assistant</h1>
+            <h1 className="font-semibold text-lg">ProMazo Task Tracker</h1>
           </div>
           <div className="flex items-center gap-2">
             <span className="text-sm text-muted-foreground mr-2" data-testid="text-user-name">

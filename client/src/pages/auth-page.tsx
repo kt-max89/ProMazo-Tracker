@@ -131,10 +131,10 @@ export default function AuthPage() {
         <div className="max-w-md">
           <div className="flex items-center gap-3 mb-4">
             <Zap className="w-8 h-8 text-primary shrink-0" />
-            <h2 className="text-3xl font-semibold tracking-tight">Meet Zeus</h2>
+            <h2 className="text-3xl font-semibold tracking-tight">ProMazo Task Tracker</h2>
           </div>
           <p className="text-muted-foreground text-lg leading-relaxed">
-            Your AI-powered assistant for the ProMazo national team. Zeus knows your documents, tracks your tasks, and helps the team move faster.
+            Your AI-powered assistant for the ProMazo national team. Knows your documents, tracks your tasks, and helps the team move faster.
           </p>
           <ul className="mt-8 space-y-5">
             <li className="flex items-start gap-4">
@@ -143,7 +143,7 @@ export default function AuthPage() {
               </div>
               <div>
                 <p className="font-medium text-sm">Search your documents</p>
-                <p className="text-muted-foreground text-sm mt-0.5">Ask Zeus anything about your internal docs and get answers with cited sources.</p>
+                <p className="text-muted-foreground text-sm mt-0.5">Ask anything about your internal docs and get answers with cited sources.</p>
               </div>
             </li>
             <li className="flex items-start gap-4">
@@ -152,7 +152,7 @@ export default function AuthPage() {
               </div>
               <div>
                 <p className="font-medium text-sm">Track team tasks</p>
-                <p className="text-muted-foreground text-sm mt-0.5">Ask what's in progress, blocked, or done — Zeus queries the live task board.</p>
+                <p className="text-muted-foreground text-sm mt-0.5">Ask what's in progress, blocked, or done — queries the live task board.</p>
               </div>
             </li>
             <li className="flex items-start gap-4">
@@ -161,7 +161,7 @@ export default function AuthPage() {
               </div>
               <div>
                 <p className="font-medium text-sm">Propose new tasks</p>
-                <p className="text-muted-foreground text-sm mt-0.5">Zeus can surface action items from your conversations for one-click creation.</p>
+                <p className="text-muted-foreground text-sm mt-0.5">Surface action items from your conversations for one-click creation.</p>
               </div>
             </li>
             <li className="flex items-start gap-4">
@@ -170,7 +170,7 @@ export default function AuthPage() {
               </div>
               <div>
                 <p className="font-medium text-sm">Always in context</p>
-                <p className="text-muted-foreground text-sm mt-0.5">Full chat history kept per session so Zeus always knows the thread.</p>
+                <p className="text-muted-foreground text-sm mt-0.5">Full chat history kept per session so the assistant always knows the thread.</p>
               </div>
             </li>
           </ul>

@@ -1,74 +1,100 @@
-import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, integer, boolean, vector, index, serial, timestamp } from "drizzle-orm/pg-core";
-import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
-export const users = pgTable("users", {
-  id: serial("id").primaryKey(),
-  email: text("email").notNull().unique(),
-  passwordHash: text("password_hash").notNull(),
-  role: text("role", { enum: ["admin", "user"] }).notNull().default("user"),
-  displayName: text("display_name").notNull(),
-});
+// ─── Domain types ───────────────────────────────────────────────────────────
 
-export const documents = pgTable("documents", {
-  id: serial("id").primaryKey(),
-  title: text("title").notNull(),
-  filename: text("filename").notNull(),
-  adminOnly: boolean("admin_only").notNull().default(false),
-  allowedUsers: text("allowed_users").array().default(sql`'{}'::text[]`),
-  allowedDomain: text("allowed_domain"),
-  chunkCount: integer("chunk_count").notNull().default(0),
-  uploadedBy: integer("uploaded_by").notNull(),
-  uploadedAt: text("uploaded_at").notNull().default(sql`now()::text`),
-});
+export type User = {
+  id: number;
+  email: string;
+  passwordHash: string;
+  role: "admin" | "user";
+  displayName: string;
+};
 
-export const chunks = pgTable("chunks", {
-  id: serial("id").primaryKey(),
-  documentId: integer("document_id").notNull().references(() => documents.id, { onDelete: "cascade" }),
-  chunkIndex: integer("chunk_index").notNull(),
-  chunkText: text("chunk_text").notNull(),
-  chunkHash: text("chunk_hash").notNull(),
-  embedding: vector("embedding", { dimensions: 1536 }),
-}, (table) => [
-  index("chunks_document_id_idx").on(table.documentId),
-]);
+export type InsertUser = Omit<User, "id">;
 
-export const citations = pgTable("citations", {
-  id: serial("id").primaryKey(),
-  userId: integer("user_id").notNull().references(() => users.id),
-  documentId: integer("document_id").notNull().references(() => documents.id),
-  chunkId: integer("chunk_id").notNull().references(() => chunks.id),
-  query: text("query").notNull(),
-  createdAt: text("created_at").notNull().default(sql`now()::text`),
-});
+export type Document = {
+  id: number;
+  title: string;
+  filename: string;
+  adminOnly: boolean;
+  allowedUsers: string[];
+  allowedDomain: string | null;
+  chunkCount: number;
+  uploadedBy: number;
+  uploadedAt: string;
+};
 
-export const chatSessions = pgTable("chat_sessions", {
-  id: serial("id").primaryKey(),
-  userId: integer("user_id").notNull().references(() => users.id),
-  title: text("title").notNull(),
-  createdAt: text("created_at").notNull().default(sql`now()::text`),
-  updatedAt: text("updated_at").notNull().default(sql`now()::text`),
-});
+export type Chunk = {
+  id: number;
+  documentId: number;
+  chunkIndex: number;
+  chunkText: string;
+  chunkHash: string;
+  embedding: number[] | null;
+};
 
-export const chatMessages = pgTable("chat_messages", {
-  id: serial("id").primaryKey(),
-  sessionId: integer("session_id").notNull().references(() => chatSessions.id, { onDelete: "cascade" }),
-  role: text("role", { enum: ["user", "assistant"] }).notNull(),
-  content: text("content").notNull(),
-  createdAt: text("created_at").notNull().default(sql`now()::text`),
-});
+export type Citation = {
+  id: number;
+  userId: number;
+  documentId: number;
+  chunkId: number;
+  query: string;
+  createdAt: string;
+};
 
-export const insertChatSessionSchema = createInsertSchema(chatSessions).omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true,
-});
+export type ChatSession = {
+  id: number;
+  userId: number;
+  title: string;
+  createdAt: string;
+  updatedAt: string;
+};
 
-export const insertChatMessageSchema = createInsertSchema(chatMessages).omit({
-  id: true,
-  createdAt: true,
-});
+export type InsertChatSession = {
+  userId: number;
+  title: string;
+};
+
+export type ChatMessage = {
+  id: number;
+  sessionId: number;
+  role: "user" | "assistant";
+  content: string;
+  createdAt: string;
+};
+
+export type InsertChatMessage = {
+  sessionId: number;
+  role: "user" | "assistant";
+  content: string;
+};
+
+export type Task = {
+  id: number;
+  title: string;
+  description: string | null;
+  status: "not_started" | "in_progress" | "blocked" | "done";
+  blockedReason: string | null;
+  isArchived: boolean;
+  createdAt: string;
+  updatedAt: string;
+  createdBy: number | null;
+  archivedAt: string | null;
+  assignedTo: number | null;
+};
+
+export type InsertTask = {
+  title: string;
+  description?: string | null;
+  status?: "not_started" | "in_progress" | "blocked" | "done";
+  blockedReason?: string | null;
+  createdBy?: number | null;
+  assignedTo?: number | null;
+};
+
+export type UpdateTask = Partial<Omit<InsertTask, "createdBy">>;
+
+// ─── Zod schemas ─────────────────────────────────────────────────────────────
 
 export const registerSchema = z.object({
   email: z.string().email("Invalid email address"),
@@ -81,47 +107,21 @@ export const loginSchema = z.object({
   password: z.string().min(1, "Password is required"),
 });
 
-export const insertDocumentSchema = createInsertSchema(documents).omit({
-  id: true,
-  chunkCount: true,
-  uploadedBy: true,
-  uploadedAt: true,
+export const insertTaskSchema = z.object({
+  title: z.string().min(1, "Title is required"),
+  description: z.string().nullable().optional(),
+  status: z.enum(["not_started", "in_progress", "blocked", "done"]).optional(),
+  blockedReason: z.string().nullable().optional(),
+  createdBy: z.number().nullable().optional(),
+  assignedTo: z.number().nullable().optional(),
 });
 
-export const tasks = pgTable("tasks", {
-  id: serial("id").primaryKey(),
-  title: text("title").notNull(),
-  description: text("description"),
-  status: text("status", { enum: ["not_started", "in_progress", "blocked", "done"] }).notNull().default("not_started"),
-  blockedReason: text("blocked_reason"),
-  isArchived: boolean("is_archived").notNull().default(false),
-  createdAt: text("created_at").notNull().default(sql`now()::text`),
-  updatedAt: text("updated_at").notNull().default(sql`now()::text`),
-  createdBy: integer("created_by").references(() => users.id),
-  archivedAt: text("archived_at"),
-  assignedTo: integer("assigned_to").references(() => users.id),
+export const updateTaskSchema = insertTaskSchema.partial().omit({ createdBy: true });
+
+export const insertDocumentSchema = z.object({
+  title: z.string().min(1),
+  filename: z.string().min(1),
+  adminOnly: z.boolean().optional(),
+  allowedUsers: z.array(z.string()).optional(),
+  allowedDomain: z.string().nullable().optional(),
 });
-
-export const insertTaskSchema = createInsertSchema(tasks).omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true,
-  archivedAt: true,
-  isArchived: true,
-});
-
-export const updateTaskSchema = insertTaskSchema.partial().omit({ createdBy: true, isArchived: true });
-
-export type Task = typeof tasks.$inferSelect;
-export type InsertTask = z.infer<typeof insertTaskSchema>;
-export type UpdateTask = z.infer<typeof updateTaskSchema>;
-
-export type User = typeof users.$inferSelect;
-export type InsertUser = typeof users.$inferInsert;
-export type Document = typeof documents.$inferSelect;
-export type Chunk = typeof chunks.$inferSelect;
-export type Citation = typeof citations.$inferSelect;
-export type ChatSession = typeof chatSessions.$inferSelect;
-export type InsertChatSession = z.infer<typeof insertChatSessionSchema>;
-export type ChatMessage = typeof chatMessages.$inferSelect;
-export type InsertChatMessage = z.infer<typeof insertChatMessageSchema>;

@@ -1,6 +1,6 @@
 import type OpenAI from "openai";
 
-const ZEUS_SYSTEM_PROMPT = `Your name is Zeus. You are an internal assistant for the ProMazo national team. ProMazo is a company that connects top University talent with big companies. You help plan, ideate, and track tasks.
+const SYSTEM_PROMPT = `You are an internal assistant for the ProMazo national team. ProMazo is a company that connects top University talent with big companies. You help plan, ideate, and track tasks.
 
 Follow these rules strictly:
 
@@ -102,7 +102,7 @@ export function buildPrompt(
   }
 
   return [
-    { role: "system", content: ZEUS_SYSTEM_PROMPT },
+    { role: "system", content: SYSTEM_PROMPT },
     { role: "user", content: userContent },
   ];
 }

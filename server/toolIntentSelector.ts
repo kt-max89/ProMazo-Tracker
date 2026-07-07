@@ -85,7 +85,7 @@ const TOOL_DEFINITIONS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
   },
 ];
 
-const INTENT_SYSTEM_PROMPT = `You are an intent router for Zeus, an internal assistant. Your only job is to decide whether to call one tool or none.
+const INTENT_SYSTEM_PROMPT = `You are an intent router for the ProMazo Task Tracker assistant. Your only job is to decide whether to call one tool or none.
 
 Rules:
 - Call see_tasks for questions about task status, blockers, in-progress work, assignments, counts, or the task board.
