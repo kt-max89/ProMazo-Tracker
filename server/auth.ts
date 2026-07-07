@@ -21,7 +21,6 @@ declare global {
 export function setupAuth(app: Express) {
   app.use(
     session({
-      // Uses express-session's built-in MemoryStore — no database needed.
       secret: process.env.SESSION_SECRET || "dev-secret-change-me",
       resave: false,
       saveUninitialized: false,

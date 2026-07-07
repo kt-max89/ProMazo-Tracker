@@ -25,6 +25,7 @@ import {
 import {
   Form, FormControl, FormField, FormItem, FormLabel, FormMessage
 } from "@/components/ui/form";
+import ReactMarkdown from "react-markdown";
 import type { Task } from "@shared/schema";
 import { AppSidebar } from "@/components/app-sidebar";
 
@@ -116,6 +117,7 @@ function TaskFormDialog({
   });
 
   const watchStatus = form.watch("status");
+  const [descEditing, setDescEditing] = useState(!task?.description);
 
   const createMutation = useMutation({
     mutationFn: (data: TaskFormValues) =>
@@ -192,19 +194,6 @@ function TaskFormDialog({
             />
             <FormField
               control={form.control}
-              name="description"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Description</FormLabel>
-                  <FormControl>
-                    <Textarea data-testid="input-task-description" placeholder="Optional description" rows={3} {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={form.control}
               name="status"
               render={({ field }) => (
                 <FormItem>
@@ -266,6 +255,36 @@ function TaskFormDialog({
                 </FormItem>
               )}
             />
+            <FormField
+              control={form.control}
+              name="description"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Description</FormLabel>
+                  <FormControl>
+                    {descEditing ? (
+                      <Textarea
+                        data-testid="input-task-description"
+                        placeholder="Optional description (supports markdown)"
+                        rows={6}
+                        autoFocus
+                        onBlur={() => { if (field.value?.trim()) setDescEditing(false); }}
+                        {...field}
+                      />
+                    ) : (
+                      <div
+                        data-testid="input-task-description"
+                        onClick={() => setDescEditing(true)}
+                        className="min-h-[9rem] cursor-text rounded-md border border-input bg-transparent px-3 py-2 text-sm prose prose-sm max-w-none dark:prose-invert prose-headings:mt-2 prose-headings:mb-1 prose-p:my-1 prose-ul:my-1 prose-ol:my-1 prose-li:my-0.5 prose-strong:text-foreground"
+                      >
+                        <ReactMarkdown>{field.value || ""}</ReactMarkdown>
+                      </div>
+                    )}
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
             <DialogFooter className="gap-2 sm:gap-0">
               {isEdit && (
                 <Button
@@ -275,7 +294,7 @@ function TaskFormDialog({
                   data-testid="button-archive-task"
                   onClick={() => archiveMutation.mutate()}
                   disabled={archiveMutation.isPending}
-                  className="mr-auto text-muted-foreground"
+                  className="text-muted-foreground"
                 >
                   <Archive className="w-3.5 h-3.5 mr-1.5" />
                   Archive
@@ -328,11 +347,6 @@ function TaskCard({
         </p>
         <Pencil className="w-3.5 h-3.5 text-muted-foreground opacity-0 group-hover:opacity-60 shrink-0 mt-0.5" />
       </div>
-      {task.description && (
-        <p className="text-xs text-muted-foreground mt-1.5 line-clamp-2" data-testid={`text-task-desc-${task.id}`}>
-          {task.description}
-        </p>
-      )}
       {task.status === "blocked" && task.blockedReason && (
         <div className="flex items-center gap-1 mt-2 text-xs text-pink-600 dark:text-pink-400">
           <Ban className="w-3 h-3 shrink-0" />
@@ -372,9 +386,6 @@ function ArchivedTaskCard({ task, onRestore }: { task: Task; onRestore: () => vo
           Restore
         </Button>
       </div>
-      {task.description && (
-        <p className="text-xs text-muted-foreground mt-1 line-clamp-1">{task.description}</p>
-      )}
       <div className="mt-2">
         <span className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium ${meta.badgeColor}`}>
           <Icon className="w-3 h-3" />

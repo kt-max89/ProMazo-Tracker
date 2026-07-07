@@ -5,22 +5,6 @@ import type {
   ChatMessage, InsertChatMessage,
 } from "@shared/schema";
 
-// ─── Cosine similarity helper ─────────────────────────────────────────────────
-
-function cosineSimilarity(a: number[], b: number[]): number {
-  if (a.length !== b.length || a.length === 0) return 0;
-  let dot = 0, normA = 0, normB = 0;
-  for (let i = 0; i < a.length; i++) {
-    dot += a[i] * b[i];
-    normA += a[i] * a[i];
-    normB += b[i] * b[i];
-  }
-  if (normA === 0 || normB === 0) return 0;
-  return dot / (Math.sqrt(normA) * Math.sqrt(normB));
-}
-
-// ─── Storage interface ────────────────────────────────────────────────────────
-
 export interface IStorage {
   getUser(id: number): Promise<User | undefined>;
   getUserByEmail(email: string): Promise<User | undefined>;
@@ -55,214 +39,194 @@ export interface IStorage {
   getChatMessagesBySessionId(sessionId: number): Promise<ChatMessage[]>;
 }
 
-// ─── In-memory implementation ─────────────────────────────────────────────────
+function cosineSimilarity(a: number[], b: number[]): number {
+  let dot = 0, magA = 0, magB = 0;
+  for (let i = 0; i < a.length; i++) {
+    dot += a[i] * b[i];
+    magA += a[i] * a[i];
+    magB += b[i] * b[i];
+  }
+  if (magA === 0 || magB === 0) return 0;
+  return dot / (Math.sqrt(magA) * Math.sqrt(magB));
+}
 
-class MemoryStorage implements IStorage {
-  private users = new Map<number, User>();
-  private documents = new Map<number, Document>();
-  private chunks = new Map<number, Chunk>();
-  private citations = new Map<number, Citation>();
-  private chatSessions = new Map<number, ChatSession>();
-  private chatMessages = new Map<number, ChatMessage>();
+export class InMemoryStorage implements IStorage {
+  private users: User[] = [];
+  private documents: Document[] = [];
+  private chunks: Chunk[] = [];
+  private citations: Citation[] = [];
+  private chatSessions: ChatSession[] = [];
+  private chatMessages: ChatMessage[] = [];
 
-  private nextId = {
-    users: 1, documents: 1, chunks: 1,
-    citations: 1, chatSessions: 1, chatMessages: 1,
-  };
-
-  // ── Users ──────────────────────────────────────────────────────────────────
+  private userIdSeq = 1;
+  private docIdSeq = 1;
+  private chunkIdSeq = 1;
+  private citationIdSeq = 1;
+  private sessionIdSeq = 1;
+  private messageIdSeq = 1;
 
   async getUser(id: number): Promise<User | undefined> {
-    return this.users.get(id);
+    return this.users.find(u => u.id === id);
   }
 
   async getUserByEmail(email: string): Promise<User | undefined> {
-    return Array.from(this.users.values()).find(
-      u => u.email.toLowerCase() === email.toLowerCase()
-    );
+    return this.users.find(u => u.email === email);
   }
 
   async createUser(user: InsertUser): Promise<User> {
-    const id = this.nextId.users++;
-    const created: User = { ...user, id };
-    this.users.set(id, created);
+    const created: User = { ...user, id: this.userIdSeq++ };
+    this.users.push(created);
     return created;
   }
 
   async getAllUsers(): Promise<User[]> {
-    return Array.from(this.users.values());
+    return [...this.users];
   }
 
-  // ── Documents ──────────────────────────────────────────────────────────────
-
   async createDocument(doc: Omit<Document, "id">): Promise<Document> {
-    const id = this.nextId.documents++;
-    const created: Document = { ...doc, id };
-    this.documents.set(id, created);
+    const created: Document = { ...doc, id: this.docIdSeq++ };
+    this.documents.push(created);
     return created;
   }
 
   async getDocument(id: number): Promise<Document | undefined> {
-    return this.documents.get(id);
+    return this.documents.find(d => d.id === id);
   }
 
   async getAllDocuments(): Promise<Document[]> {
-    return Array.from(this.documents.values());
+    return [...this.documents];
   }
 
   async updateDocument(id: number, updates: Partial<Document>): Promise<Document | undefined> {
-    const doc = this.documents.get(id);
-    if (!doc) return undefined;
-    const updated = { ...doc, ...updates };
-    this.documents.set(id, updated);
-    return updated;
+    const idx = this.documents.findIndex(d => d.id === id);
+    if (idx === -1) return undefined;
+    this.documents[idx] = { ...this.documents[idx], ...updates };
+    return this.documents[idx];
   }
 
   async deleteDocument(id: number): Promise<void> {
-    this.documents.delete(id);
+    this.documents = this.documents.filter(d => d.id !== id);
   }
 
-  // ── Chunks ─────────────────────────────────────────────────────────────────
-
   async getChunksByDocumentId(documentId: number): Promise<Chunk[]> {
-    return Array.from(this.chunks.values()).filter(c => c.documentId === documentId);
+    return this.chunks.filter(c => c.documentId === documentId);
   }
 
   async deleteChunksByDocumentId(documentId: number): Promise<void> {
-    for (const [id, chunk] of Array.from(this.chunks.entries())) {
-      if (chunk.documentId === documentId) this.chunks.delete(id);
-    }
+    this.chunks = this.chunks.filter(c => c.documentId !== documentId);
   }
 
   async insertChunks(chunkData: Omit<Chunk, "id">[]): Promise<void> {
-    for (const data of chunkData) {
-      const id = this.nextId.chunks++;
-      this.chunks.set(id, { ...data, id });
+    for (const c of chunkData) {
+      this.chunks.push({ ...c, id: this.chunkIdSeq++ });
     }
   }
 
   async searchSimilarChunks(
     embedding: number[],
     documentIds: number[],
-    limit: number,
+    limit: number
   ): Promise<(Chunk & { similarity: number })[]> {
-    const docSet = new Set(documentIds);
-    const results: (Chunk & { similarity: number })[] = [];
-
-    for (const chunk of Array.from(this.chunks.values())) {
-      if (!docSet.has(chunk.documentId)) continue;
-      if (!chunk.embedding) continue;
-      const similarity = cosineSimilarity(embedding, chunk.embedding);
-      results.push({ ...chunk, similarity });
-    }
-
-    results.sort((a, b) => b.similarity - a.similarity);
-    return results.slice(0, limit);
+    const candidates = this.chunks.filter(
+      c => documentIds.includes(c.documentId) && c.embedding != null
+    );
+    const scored = candidates.map(c => ({
+      ...c,
+      similarity: cosineSimilarity(embedding, c.embedding!),
+    }));
+    scored.sort((a, b) => b.similarity - a.similarity);
+    return scored.slice(0, limit);
   }
 
-  // ── Citations ──────────────────────────────────────────────────────────────
-
   async createCitation(citation: Omit<Citation, "id">): Promise<Citation> {
-    const id = this.nextId.citations++;
-    const created: Citation = { ...citation, id };
-    this.citations.set(id, created);
+    const created: Citation = { ...citation, id: this.citationIdSeq++ };
+    this.citations.push(created);
     return created;
   }
 
   async getCitationsByUserId(userId: number): Promise<(Citation & { documentTitle: string })[]> {
-    return Array.from(this.citations.values())
+    return this.citations
       .filter(c => c.userId === userId)
       .map(c => ({
         ...c,
-        documentTitle: this.documents.get(c.documentId)?.title ?? "Unknown",
-      }));
+        documentTitle: this.documents.find(d => d.id === c.documentId)?.title ?? "Unknown",
+      }))
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   }
 
   async deleteCitationsByDocumentId(documentId: number): Promise<void> {
-    for (const [id, c] of Array.from(this.citations.entries())) {
-      if (c.documentId === documentId) this.citations.delete(id);
-    }
+    this.citations = this.citations.filter(c => c.documentId !== documentId);
   }
-
-  // ── Accessible document IDs ────────────────────────────────────────────────
-  // Precedence (most restrictive first):
-  //   1. adminOnly → skip
-  //   2. allowedUsers non-empty → explicit user match required
-  //   3. allowedDomain set → domain match
-  //   4. both empty → public (any authenticated user)
 
   async getAccessibleDocumentIds(user: User): Promise<number[]> {
-    if (user.role === "admin") {
-      return Array.from(this.documents.keys());
-    }
-    const ids: number[] = [];
-    for (const doc of Array.from(this.documents.values())) {
-      if (doc.adminOnly) continue;
-      if (doc.allowedUsers.length > 0) {
-        if (doc.allowedUsers.includes(user.email)) ids.push(doc.id);
-        continue;
-      }
-      if (doc.allowedDomain) {
-        if (user.email.endsWith(`@${doc.allowedDomain}`)) ids.push(doc.id);
-        continue;
-      }
-      // Public document — accessible to all authenticated users
-      ids.push(doc.id);
-    }
-    return ids;
+    const userDomain = user.email.split("@")[1];
+    return this.documents
+      .filter(doc => {
+        if (doc.adminOnly) return user.role === "admin";
+        if (doc.allowedUsers && doc.allowedUsers.length > 0) {
+          return doc.allowedUsers.includes(user.email);
+        }
+        if (doc.allowedDomain) {
+          return userDomain === doc.allowedDomain;
+        }
+        return true;
+      })
+      .map(doc => doc.id);
   }
 
-  // ── Chat sessions ──────────────────────────────────────────────────────────
-
   async createChatSession(session: InsertChatSession): Promise<ChatSession> {
-    const id = this.nextId.chatSessions++;
     const now = new Date().toISOString();
-    const created: ChatSession = { ...session, id, createdAt: now, updatedAt: now };
-    this.chatSessions.set(id, created);
+    const created: ChatSession = {
+      ...session,
+      id: this.sessionIdSeq++,
+      createdAt: now,
+      updatedAt: now,
+    };
+    this.chatSessions.push(created);
     return created;
   }
 
   async getChatSessionsByUserId(userId: number): Promise<ChatSession[]> {
-    return Array.from(this.chatSessions.values())
+    return this.chatSessions
       .filter(s => s.userId === userId)
       .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   }
 
   async getChatSession(id: number): Promise<ChatSession | undefined> {
-    return this.chatSessions.get(id);
+    return this.chatSessions.find(s => s.id === id);
   }
 
   async deleteChatSession(id: number): Promise<void> {
-    this.chatSessions.delete(id);
-    for (const [mid, msg] of Array.from(this.chatMessages.entries())) {
-      if (msg.sessionId === id) this.chatMessages.delete(mid);
-    }
+    this.chatSessions = this.chatSessions.filter(s => s.id !== id);
+    this.chatMessages = this.chatMessages.filter(m => m.sessionId !== id);
   }
 
   async updateChatSessionTitle(id: number, title: string): Promise<void> {
-    const session = this.chatSessions.get(id);
-    if (session) this.chatSessions.set(id, { ...session, title });
+    const idx = this.chatSessions.findIndex(s => s.id === id);
+    if (idx !== -1) this.chatSessions[idx] = { ...this.chatSessions[idx], title };
   }
 
   async updateChatSessionTimestamp(id: number): Promise<void> {
-    const session = this.chatSessions.get(id);
-    if (session) this.chatSessions.set(id, { ...session, updatedAt: new Date().toISOString() });
+    const idx = this.chatSessions.findIndex(s => s.id === id);
+    if (idx !== -1)
+      this.chatSessions[idx] = { ...this.chatSessions[idx], updatedAt: new Date().toISOString() };
   }
 
-  // ── Chat messages ──────────────────────────────────────────────────────────
-
   async addChatMessage(message: InsertChatMessage): Promise<ChatMessage> {
-    const id = this.nextId.chatMessages++;
-    const created: ChatMessage = { ...message, id, createdAt: new Date().toISOString() };
-    this.chatMessages.set(id, created);
+    const created: ChatMessage = {
+      ...message,
+      id: this.messageIdSeq++,
+      createdAt: new Date().toISOString(),
+    };
+    this.chatMessages.push(created);
     return created;
   }
 
   async getChatMessagesBySessionId(sessionId: number): Promise<ChatMessage[]> {
-    return Array.from(this.chatMessages.values())
+    return this.chatMessages
       .filter(m => m.sessionId === sessionId)
       .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
   }
 }
 
-export const storage = new MemoryStorage();
+export const storage = new InMemoryStorage();

@@ -1,37 +1,35 @@
 import type { Task, InsertTask } from "@shared/schema";
 
-// ─── In-memory task store ──────────────────────────────────────────────────
-
-const taskStore = new Map<number, Task>();
-let nextTaskId = 1;
-
 export type TaskFilters = { archived?: boolean };
 
 const VALID_STATUSES = ["not_started", "in_progress", "blocked", "done"] as const;
 type TaskStatus = (typeof VALID_STATUSES)[number];
 
-// ─── CRUD ──────────────────────────────────────────────────────────────────
+// In-memory store
+let taskStore: Task[] = [];
+let nextId = 1;
 
 export async function listTasks(filters: TaskFilters = {}): Promise<Task[]> {
   const archived = filters.archived ?? false;
-  return Array.from(taskStore.values()).filter(t => t.isArchived === archived);
+  return taskStore.filter(t => t.isArchived === archived);
 }
 
 export async function createTask(input: InsertTask): Promise<Task> {
-  if (!input.title?.trim()) throw new Error("Title is required");
-  const status = (input.status ?? "not_started") as TaskStatus;
-  if (!VALID_STATUSES.includes(status)) {
+  if (!input.title?.trim()) {
+    throw new Error("Title is required");
+  }
+  if (input.status && !VALID_STATUSES.includes(input.status as TaskStatus)) {
     throw new Error(`Status must be one of: ${VALID_STATUSES.join(", ")}`);
   }
-  if (status === "blocked" && !input.blockedReason?.trim()) {
+  if (input.status === "blocked" && !input.blockedReason?.trim()) {
     throw new Error("Blocked reason is required when status is blocked");
   }
   const now = new Date().toISOString();
   const task: Task = {
-    id: nextTaskId++,
-    title: input.title.trim(),
+    id: nextId++,
+    title: input.title,
     description: input.description ?? null,
-    status,
+    status: (input.status as TaskStatus) ?? "not_started",
     blockedReason: input.blockedReason ?? null,
     isArchived: false,
     createdAt: now,
@@ -40,80 +38,80 @@ export async function createTask(input: InsertTask): Promise<Task> {
     archivedAt: null,
     assignedTo: input.assignedTo ?? null,
   };
-  taskStore.set(task.id, task);
+  taskStore.push(task);
   return task;
 }
 
 export async function updateTask(id: number, input: Partial<InsertTask>): Promise<Task> {
-  const existing = taskStore.get(id);
-  if (!existing) throw new Error("Task not found");
-
   if (input.title !== undefined && !input.title?.trim()) {
     throw new Error("Title is required");
   }
   if (input.status !== undefined && !VALID_STATUSES.includes(input.status as TaskStatus)) {
     throw new Error(`Status must be one of: ${VALID_STATUSES.join(", ")}`);
   }
+
+  const idx = taskStore.findIndex(t => t.id === id);
+  if (idx === -1) throw new Error("Task not found");
+  const existing = taskStore[idx];
+
   if (input.status === "blocked") {
     const reason = input.blockedReason !== undefined ? input.blockedReason : existing.blockedReason;
-    if (!reason?.trim()) throw new Error("Blocked reason is required when status is blocked");
+    if (!reason?.trim()) {
+      throw new Error("Blocked reason is required when status is blocked");
+    }
   }
 
-  const updates: Partial<Task> = { ...input };
+  const updates: Partial<Task> = { ...input } as any;
   if (input.status && input.status !== "blocked") {
     updates.blockedReason = null;
   }
 
-  const updated: Task = { ...existing, ...updates, updatedAt: new Date().toISOString() };
-  taskStore.set(id, updated);
+  const now = new Date().toISOString();
+  const updated: Task = { ...existing, ...updates, updatedAt: now };
+  taskStore[idx] = updated;
   return updated;
 }
 
 export async function archiveTask(id: number): Promise<Task> {
-  const existing = taskStore.get(id);
-  if (!existing) throw new Error("Task not found");
+  const idx = taskStore.findIndex(t => t.id === id);
+  if (idx === -1) throw new Error("Task not found");
   const now = new Date().toISOString();
-  const updated: Task = { ...existing, isArchived: true, archivedAt: now, updatedAt: now };
-  taskStore.set(id, updated);
+  const updated: Task = { ...taskStore[idx], isArchived: true, archivedAt: now, updatedAt: now };
+  taskStore[idx] = updated;
   return updated;
 }
 
 export async function restoreTask(id: number): Promise<Task> {
-  const existing = taskStore.get(id);
-  if (!existing) throw new Error("Task not found");
+  const idx = taskStore.findIndex(t => t.id === id);
+  if (idx === -1) throw new Error("Task not found");
   const now = new Date().toISOString();
-  const updated: Task = { ...existing, isArchived: false, archivedAt: null, updatedAt: now };
-  taskStore.set(id, updated);
+  const updated: Task = { ...taskStore[idx], isArchived: false, archivedAt: null, updatedAt: now };
+  taskStore[idx] = updated;
   return updated;
 }
-
-// ─── Query helpers (used by seeTasksTool) ─────────────────────────────────
 
 export type TaskCounts = Record<string, number>;
 
 export async function getTaskCounts(): Promise<TaskCounts> {
   const counts: TaskCounts = { not_started: 0, in_progress: 0, blocked: 0, done: 0 };
-  for (const t of Array.from(taskStore.values())) {
+  for (const t of taskStore) {
     if (!t.isArchived) counts[t.status] = (counts[t.status] ?? 0) + 1;
   }
   return counts;
 }
 
 export async function getTasksByStatus(status: string): Promise<Task[]> {
-  return Array.from(taskStore.values()).filter(t => !t.isArchived && t.status === status);
+  return taskStore.filter(t => !t.isArchived && t.status === status);
 }
 
 export async function searchTasks(query: string): Promise<Task[]> {
-  const q = query.toLowerCase();
-  return Array.from(taskStore.values()).filter(
-    t => !t.isArchived && (
-      t.title.toLowerCase().includes(q) ||
-      t.description?.toLowerCase().includes(q)
-    )
+  const term = query.toLowerCase();
+  return taskStore.filter(
+    t =>
+      !t.isArchived &&
+      (t.title.toLowerCase().includes(term) || (t.description ?? "").toLowerCase().includes(term))
   );
 }
-
-// ─── Legacy compact context helper ────────────────────────────────────────
 
 function formatTaskLine(t: Task): string {
   let line = `- [${t.status}] ${t.title}`;
