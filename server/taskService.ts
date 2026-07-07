@@ -1,26 +1,44 @@
+import { eq, and, or, ilike } from "drizzle-orm";
+import { db } from "./db";
+import { tasksTable } from "./schema";
 import type { Task, InsertTask } from "@shared/schema";
 import { getProject } from "./projectService";
-import { loadStore, saveStore } from "./persist";
 
 export type TaskFilters = { archived?: boolean };
 
 const VALID_STATUSES = ["not_started", "in_progress", "blocked", "done"] as const;
 type TaskStatus = (typeof VALID_STATUSES)[number];
 
-// Persisted store
-type TaskStore = { tasks: Task[]; nextId: number };
+// ─── Row mapper ───────────────────────────────────────────────────────────────
 
-function load(): TaskStore {
-  return loadStore<TaskStore>("tasks", { tasks: [], nextId: 1 });
+function mapTask(row: typeof tasksTable.$inferSelect): Task {
+  return {
+    id: row.id,
+    title: row.title,
+    description: row.description,
+    status: row.status as Task["status"],
+    blockedReason: row.blockedReason,
+    isArchived: row.isArchived,
+    createdAt: row.createdAt instanceof Date ? row.createdAt.toISOString() : String(row.createdAt),
+    updatedAt: row.updatedAt instanceof Date ? row.updatedAt.toISOString() : String(row.updatedAt),
+    createdBy: row.createdBy,
+    archivedAt: row.archivedAt
+      ? (row.archivedAt instanceof Date ? row.archivedAt.toISOString() : String(row.archivedAt))
+      : null,
+    assignedTo: row.assignedTo,
+    projectId: row.projectId,
+  };
 }
 
-function save(store: TaskStore): void {
-  saveStore("tasks", store);
-}
+// ─── CRUD ─────────────────────────────────────────────────────────────────────
 
 export async function listTasks(filters: TaskFilters = {}): Promise<Task[]> {
   const archived = filters.archived ?? false;
-  return load().tasks.filter(t => t.isArchived === archived);
+  const rows = await db
+    .select()
+    .from(tasksTable)
+    .where(eq(tasksTable.isArchived, archived));
+  return rows.map(mapTask);
 }
 
 export async function createTask(input: InsertTask): Promise<Task> {
@@ -37,25 +55,21 @@ export async function createTask(input: InsertTask): Promise<Task> {
     const proj = await getProject(input.projectId);
     if (!proj) throw new Error("Project not found");
   }
-  const store = load();
-  const now = new Date().toISOString();
-  const task: Task = {
-    id: store.nextId++,
-    title: input.title,
-    description: input.description ?? null,
-    status: (input.status as TaskStatus) ?? "not_started",
-    blockedReason: input.blockedReason ?? null,
-    isArchived: false,
-    createdAt: now,
-    updatedAt: now,
-    createdBy: input.createdBy ?? null,
-    archivedAt: null,
-    assignedTo: input.assignedTo ?? null,
-    projectId: input.projectId ?? null,
-  };
-  store.tasks.push(task);
-  save(store);
-  return task;
+
+  const [row] = await db
+    .insert(tasksTable)
+    .values({
+      title: input.title.trim(),
+      description: input.description ?? null,
+      status: (input.status as TaskStatus) ?? "not_started",
+      blockedReason: input.blockedReason ?? null,
+      isArchived: false,
+      createdBy: input.createdBy ?? null,
+      assignedTo: input.assignedTo ?? null,
+      projectId: input.projectId ?? null,
+    })
+    .returning();
+  return mapTask(row);
 }
 
 export async function updateTask(id: number, input: Partial<InsertTask>): Promise<Task> {
@@ -66,10 +80,9 @@ export async function updateTask(id: number, input: Partial<InsertTask>): Promis
     throw new Error(`Status must be one of: ${VALID_STATUSES.join(", ")}`);
   }
 
-  const store = load();
-  const idx = store.tasks.findIndex(t => t.id === id);
-  if (idx === -1) throw new Error("Task not found");
-  const existing = store.tasks[idx];
+  // Fetch current task to validate blocked reason merge
+  const [existing] = await db.select().from(tasksTable).where(eq(tasksTable.id, id));
+  if (!existing) throw new Error("Task not found");
 
   if (input.status === "blocked") {
     const reason = input.blockedReason !== undefined ? input.blockedReason : existing.blockedReason;
@@ -83,61 +96,84 @@ export async function updateTask(id: number, input: Partial<InsertTask>): Promis
     if (!proj) throw new Error("Project not found");
   }
 
-  const updates: Partial<Task> = { ...input } as any;
-  if (input.status && input.status !== "blocked") {
-    updates.blockedReason = null;
+  const set: Partial<typeof tasksTable.$inferInsert> & { updatedAt: Date } = {
+    updatedAt: new Date(),
+  };
+  if (input.title !== undefined) set.title = input.title.trim();
+  if (input.description !== undefined) set.description = input.description;
+  if (input.status !== undefined) {
+    set.status = input.status;
+    // Clear blocked reason when switching away from blocked
+    if (input.status !== "blocked") set.blockedReason = null;
   }
+  if (input.blockedReason !== undefined) set.blockedReason = input.blockedReason;
+  if (input.assignedTo !== undefined) set.assignedTo = input.assignedTo;
+  if (input.projectId !== undefined) set.projectId = input.projectId;
 
-  const now = new Date().toISOString();
-  const updated: Task = { ...existing, ...updates, updatedAt: now };
-  store.tasks[idx] = updated;
-  save(store);
-  return updated;
+  const [updated] = await db
+    .update(tasksTable)
+    .set(set)
+    .where(eq(tasksTable.id, id))
+    .returning();
+  if (!updated) throw new Error("Task not found");
+  return mapTask(updated);
 }
 
 export async function archiveTask(id: number): Promise<Task> {
-  const store = load();
-  const idx = store.tasks.findIndex(t => t.id === id);
-  if (idx === -1) throw new Error("Task not found");
-  const now = new Date().toISOString();
-  const updated: Task = { ...store.tasks[idx], isArchived: true, archivedAt: now, updatedAt: now };
-  store.tasks[idx] = updated;
-  save(store);
-  return updated;
+  const [updated] = await db
+    .update(tasksTable)
+    .set({ isArchived: true, archivedAt: new Date(), updatedAt: new Date() })
+    .where(eq(tasksTable.id, id))
+    .returning();
+  if (!updated) throw new Error("Task not found");
+  return mapTask(updated);
 }
 
 export async function restoreTask(id: number): Promise<Task> {
-  const store = load();
-  const idx = store.tasks.findIndex(t => t.id === id);
-  if (idx === -1) throw new Error("Task not found");
-  const now = new Date().toISOString();
-  const updated: Task = { ...store.tasks[idx], isArchived: false, archivedAt: null, updatedAt: now };
-  store.tasks[idx] = updated;
-  save(store);
-  return updated;
+  const [updated] = await db
+    .update(tasksTable)
+    .set({ isArchived: false, archivedAt: null, updatedAt: new Date() })
+    .where(eq(tasksTable.id, id))
+    .returning();
+  if (!updated) throw new Error("Task not found");
+  return mapTask(updated);
 }
+
+// ─── Context helpers ──────────────────────────────────────────────────────────
 
 export type TaskCounts = Record<string, number>;
 
 export async function getTaskCounts(): Promise<TaskCounts> {
+  const rows = await db.select().from(tasksTable).where(eq(tasksTable.isArchived, false));
   const counts: TaskCounts = { not_started: 0, in_progress: 0, blocked: 0, done: 0 };
-  for (const t of load().tasks) {
-    if (!t.isArchived) counts[t.status] = (counts[t.status] ?? 0) + 1;
+  for (const t of rows) {
+    counts[t.status] = (counts[t.status] ?? 0) + 1;
   }
   return counts;
 }
 
 export async function getTasksByStatus(status: string): Promise<Task[]> {
-  return load().tasks.filter(t => !t.isArchived && t.status === status);
+  const rows = await db
+    .select()
+    .from(tasksTable)
+    .where(and(eq(tasksTable.isArchived, false), eq(tasksTable.status, status)));
+  return rows.map(mapTask);
 }
 
 export async function searchTasks(query: string): Promise<Task[]> {
-  const term = query.toLowerCase();
-  return load().tasks.filter(
-    t =>
-      !t.isArchived &&
-      (t.title.toLowerCase().includes(term) || (t.description ?? "").toLowerCase().includes(term))
-  );
+  const rows = await db
+    .select()
+    .from(tasksTable)
+    .where(
+      and(
+        eq(tasksTable.isArchived, false),
+        or(
+          ilike(tasksTable.title, `%${query}%`),
+          ilike(tasksTable.description, `%${query}%`)
+        )
+      )
+    );
+  return rows.map(mapTask);
 }
 
 function formatTaskLine(t: Task): string {
@@ -174,7 +210,7 @@ export async function getCompactTaskContext(message: string): Promise<string> {
       const matched = await getTasksByStatus(status);
       if (matched.length > 0) {
         parts.push(`\n${status} tasks:`);
-        matched.slice(0, 10).forEach(t => parts.push(formatTaskLine(t)));
+        matched.slice(0, 10).forEach((t) => parts.push(formatTaskLine(t)));
       } else {
         parts.push(`\n${status} tasks: none`);
       }
@@ -182,24 +218,24 @@ export async function getCompactTaskContext(message: string): Promise<string> {
   }
 
   const genericTaskTerms = ["task", "what", "show", "list", "all", "board"];
-  const wantsAll = genericTaskTerms.some(w => lower.includes(w)) && fetchedStatuses.size === 0;
+  const wantsAll = genericTaskTerms.some((w) => lower.includes(w)) && fetchedStatuses.size === 0;
   if (wantsAll) {
     const all = await listTasks({ archived: false });
     if (all.length > 0) {
       parts.push("\nAll active tasks:");
-      all.slice(0, 20).forEach(t => parts.push(formatTaskLine(t)));
+      all.slice(0, 20).forEach((t) => parts.push(formatTaskLine(t)));
     } else {
       parts.push("\nAll active tasks: none");
     }
   }
 
-  const searchTerms = message.match(/["']([^"']+)["']/g)?.map(s => s.replace(/["']/g, ""));
+  const searchTerms = message.match(/["']([^"']+)["']/g)?.map((s) => s.replace(/["']/g, ""));
   if (searchTerms) {
     for (const term of searchTerms) {
       const found = await searchTasks(term);
       if (found.length > 0) {
         parts.push(`\nTasks matching "${term}":`);
-        found.slice(0, 5).forEach(t => parts.push(formatTaskLine(t)));
+        found.slice(0, 5).forEach((t) => parts.push(formatTaskLine(t)));
       }
     }
   }

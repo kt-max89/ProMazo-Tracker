@@ -1,2 +1,4 @@
 - [Stale server + project routes](stale-server-routes.md) — running server never picks up new routes until workflow restart; Vite catch-all returns 200 HTML for unregistered paths.
-- [Persist.ts atomic writes](persist-atomic-writes.md) — file store must use temp+fsync+rename to avoid corrupted JSON on crash; direct writeFileSync is unsafe.
+- [Persist.ts atomic writes](persist-atomic-writes.md) — REMOVED: file-based persist.ts deleted; all storage now via PostgreSQL + Drizzle ORM.
+- [PostgreSQL migration](postgres-migration.md) — Drizzle schema in server/schema.ts; DatabaseStorage in server/storage.ts; taskService/projectService use Drizzle queries; sessions via connect-pg-simple.
+- [Pre-existing table schema mismatches](postgres-migration.md) — prior task-agent merges created tables with text timestamps and TEXT[] arrays; required ALTER TABLE to fix before Drizzle could work.

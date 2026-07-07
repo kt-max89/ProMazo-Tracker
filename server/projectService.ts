@@ -1,56 +1,68 @@
+import { eq } from "drizzle-orm";
+import { db } from "./db";
+import { projectsTable } from "./schema";
 import type { Project, InsertProject, UpdateProject } from "@shared/schema";
-import { loadStore, saveStore } from "./persist";
 
-type ProjectStore = { projects: Project[]; nextId: number };
+// ─── Row mapper ───────────────────────────────────────────────────────────────
 
-function load(): ProjectStore {
-  return loadStore<ProjectStore>("projects", { projects: [], nextId: 1 });
+function mapProject(row: typeof projectsTable.$inferSelect): Project {
+  return {
+    id: row.id,
+    name: row.name,
+    description: row.description,
+    timeline: row.timeline,
+    createdAt: row.createdAt instanceof Date ? row.createdAt.toISOString() : String(row.createdAt),
+    updatedAt: row.updatedAt instanceof Date ? row.updatedAt.toISOString() : String(row.updatedAt),
+    createdBy: row.createdBy,
+  };
 }
 
-function save(store: ProjectStore): void {
-  saveStore("projects", store);
-}
+// ─── CRUD ─────────────────────────────────────────────────────────────────────
 
 export async function listProjects(): Promise<Project[]> {
-  return [...load().projects];
+  const rows = await db.select().from(projectsTable);
+  return rows.map(mapProject);
 }
 
 export async function getProject(id: number): Promise<Project | undefined> {
-  return load().projects.find(p => p.id === id);
+  const [row] = await db.select().from(projectsTable).where(eq(projectsTable.id, id));
+  return row ? mapProject(row) : undefined;
 }
 
 export async function createProject(input: InsertProject): Promise<Project> {
   if (!input.name?.trim()) throw new Error("Name is required");
-  const store = load();
-  const now = new Date().toISOString();
-  const project: Project = {
-    id: store.nextId++,
-    name: input.name.trim(),
-    description: input.description ?? null,
-    timeline: input.timeline ?? null,
-    createdAt: now,
-    updatedAt: now,
-    createdBy: input.createdBy ?? null,
-  };
-  store.projects.push(project);
-  save(store);
-  return project;
+
+  const [row] = await db
+    .insert(projectsTable)
+    .values({
+      name: input.name.trim(),
+      description: input.description ?? null,
+      timeline: input.timeline ?? null,
+      createdBy: input.createdBy ?? null,
+    })
+    .returning();
+  return mapProject(row);
 }
 
 export async function updateProject(id: number, input: UpdateProject): Promise<Project> {
-  const store = load();
-  const idx = store.projects.findIndex(p => p.id === id);
-  if (idx === -1) throw new Error("Project not found");
   if (input.name !== undefined && !input.name?.trim()) throw new Error("Name is required");
-  const now = new Date().toISOString();
-  const updated: Project = { ...store.projects[idx], ...input, updatedAt: now };
-  store.projects[idx] = updated;
-  save(store);
-  return updated;
+
+  const set: Partial<typeof projectsTable.$inferInsert> & { updatedAt: Date } = {
+    updatedAt: new Date(),
+  };
+  if (input.name !== undefined) set.name = input.name.trim();
+  if (input.description !== undefined) set.description = input.description;
+  if (input.timeline !== undefined) set.timeline = input.timeline;
+
+  const [updated] = await db
+    .update(projectsTable)
+    .set(set)
+    .where(eq(projectsTable.id, id))
+    .returning();
+  if (!updated) throw new Error("Project not found");
+  return mapProject(updated);
 }
 
 export async function deleteProject(id: number): Promise<void> {
-  const store = load();
-  store.projects = store.projects.filter(p => p.id !== id);
-  save(store);
+  await db.delete(projectsTable).where(eq(projectsTable.id, id));
 }

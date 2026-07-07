@@ -2,8 +2,10 @@ import passport from "passport";
 import { Strategy as LocalStrategy } from "passport-local";
 import bcrypt from "bcrypt";
 import session from "express-session";
+import connectPgSimple from "connect-pg-simple";
 import type { Express, Request, Response, NextFunction } from "express";
 import { storage } from "./storage";
+import { pool } from "./db";
 import type { User } from "@shared/schema";
 
 declare global {
@@ -18,9 +20,16 @@ declare global {
   }
 }
 
+const PgStore = connectPgSimple(session);
+
 export function setupAuth(app: Express) {
   app.use(
     session({
+      store: new PgStore({
+        pool,
+        tableName: "session",
+        createTableIfMissing: true,
+      }),
       secret: process.env.SESSION_SECRET || "dev-secret-change-me",
       resave: false,
       saveUninitialized: false,
