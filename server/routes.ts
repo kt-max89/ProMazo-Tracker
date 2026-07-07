@@ -8,7 +8,7 @@ import { setupAuth, requireAuth, requireAdmin } from "./auth";
 import { registerSchema, loginSchema, insertTaskSchema, updateTaskSchema, insertProjectSchema, updateProjectSchema, insertMilestoneSchema, updateMilestoneSchema } from "@shared/schema";
 import { listTasks, createTask, updateTask, archiveTask, restoreTask } from "./taskService";
 import { listProjects, getProject, createProject, updateProject } from "./projectService";
-import { listMilestonesByProject, getMilestone, createMilestone, updateMilestone, deleteMilestone } from "./milestoneService";
+import { listMilestones, listMilestonesByProject, getMilestone, createMilestone, updateMilestone, deleteMilestone } from "./milestoneService";
 import { chunkText, hashChunk, getEmbedding, getEmbeddings } from "./openai";
 import { handleChatMessage } from "./chatOrchestrator";
 import { validateProposal } from "./proposalSchema";
@@ -595,6 +595,15 @@ export async function registerRoutes(
       if (isNaN(id)) return res.status(400).json({ message: "Invalid project id" });
       const all = await listTasks({ archived: false });
       return res.json(all.filter(t => t.projectId === id));
+    } catch (err: any) {
+      return res.status(500).json({ message: err.message });
+    }
+  });
+
+  // Global milestones list (all milestones across projects)
+  app.get("/api/milestones", requireAuth, async (_req, res) => {
+    try {
+      return res.json(await listMilestones());
     } catch (err: any) {
       return res.status(500).json({ message: err.message });
     }

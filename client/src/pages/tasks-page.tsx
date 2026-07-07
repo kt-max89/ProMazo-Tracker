@@ -7,14 +7,14 @@ import { useTheme } from "@/components/theme-provider";
 import {
   Plus, Loader2, AlertCircle, CheckCircle2, Clock, Ban,
   RotateCcw, Pencil, Sun, Moon, LogOut, Zap,
-  Settings, BookOpen, PanelLeft, UserCircle2
+  Settings, BookOpen, PanelLeft, UserCircle2, Flag
 } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue
 } from "@/components/ui/select";
-import type { Task, Project } from "@shared/schema";
+import type { Task, Project, Milestone } from "@shared/schema";
 import { AppSidebar } from "@/components/app-sidebar";
 import { TaskFormDialog } from "@/components/task-form-dialog";
 
@@ -68,17 +68,20 @@ function statusMeta(value: string) {
 function TaskCard({
   task,
   users,
+  milestones,
   onClick,
   onDragStart,
   onDragEnd,
 }: {
   task: Task;
   users: AppUser[];
+  milestones: Milestone[];
   onClick: () => void;
   onDragStart: (e: React.DragEvent) => void;
   onDragEnd: () => void;
 }) {
   const assignee = task.assignedTo != null ? users.find(u => u.id === task.assignedTo) : null;
+  const milestone = task.milestoneId != null ? milestones.find(m => m.id === task.milestoneId) : null;
 
   return (
     <div
@@ -95,6 +98,14 @@ function TaskCard({
         </p>
         <Pencil className="w-3.5 h-3.5 text-muted-foreground opacity-0 group-hover:opacity-60 shrink-0 mt-0.5" />
       </div>
+      {milestone && (
+        <div className="flex items-center gap-1 mt-2" data-testid={`badge-milestone-${task.id}`}>
+          <span className="inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300 font-medium max-w-full">
+            <Flag className="w-2.5 h-2.5 shrink-0" />
+            <span className="truncate">{milestone.name}</span>
+          </span>
+        </div>
+      )}
       {task.status === "blocked" && task.blockedReason && (
         <div className="flex items-center gap-1 mt-2 text-xs text-pink-600 dark:text-pink-400">
           <Ban className="w-3 h-3 shrink-0" />
@@ -167,6 +178,10 @@ export default function TasksPage() {
 
   const { data: projects = [] } = useQuery<Project[]>({
     queryKey: ["/api/projects"],
+  });
+
+  const { data: milestones = [] } = useQuery<Milestone[]>({
+    queryKey: ["/api/milestones"],
   });
 
   const restoreMutation = useMutation({
@@ -377,6 +392,7 @@ export default function TasksPage() {
                             key={task.id}
                             task={task}
                             users={users}
+                            milestones={milestones}
                             onClick={() => setEditTask(task)}
                             onDragStart={e => {
                               e.dataTransfer.setData("taskId", String(task.id));
