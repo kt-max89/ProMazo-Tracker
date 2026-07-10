@@ -2,7 +2,7 @@ import OpenAI from "openai";
 import { selectToolIntent } from "./toolIntentSelector";
 import { runSeeTasksTool } from "./seeTasksTool";
 import { runReadDocsTool } from "./readDocsTool";
-import { buildPrompt, type ToolResult } from "./promptBuilder";
+import { buildPrompt, type ToolResult, type HistoryMessage } from "./promptBuilder";
 import { validateProposal, type ValidatedProposal } from "./proposalSchema";
 import type { DocChunk } from "./documentRetrievalService";
 import type { IStorage } from "./storage";
@@ -13,6 +13,13 @@ if (!process.env.OPENAI_API_KEY) {
 }
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY || "" });
+
+// Context budget for session history included in the prompt. Older turns
+// beyond these limits are collapsed into a short summary instead of dropped
+// silently, so long sessions can't blow up prompt size/cost.
+const MAX_HISTORY_MESSAGES = 20;
+const MAX_HISTORY_CHARS = 6000;
+const MAX_SUMMARY_CHARS = 800;
 
 export type OrchestratorInput = {
   message: string;
@@ -33,6 +40,37 @@ export async function* handleChatMessage(
   input: OrchestratorInput
 ): AsyncGenerator<OrchestratorYield> {
   const { message, user, storage, sessionId } = input;
+
+  // Step 0: load recent session history (if any) and bound it to a sane
+  // context budget. Messages beyond the budget are collapsed into a short
+  // summary rather than dropped silently.
+  let history: HistoryMessage[] = [];
+  let historySummary: string | undefined;
+
+  if (sessionId) {
+    const allMessages = await storage.getChatMessagesBySessionId(sessionId);
+    // The current user message was already persisted by the route handler
+    // before this generator was invoked, so it is the last row — exclude it
+    // here since it's added explicitly by buildPrompt via `message`.
+    const priorMessages = allMessages.slice(0, -1);
+
+    let selected = priorMessages.slice(-MAX_HISTORY_MESSAGES);
+    let totalChars = selected.reduce((sum, m) => sum + m.content.length, 0);
+    while (selected.length > 0 && totalChars > MAX_HISTORY_CHARS) {
+      totalChars -= selected[0].content.length;
+      selected = selected.slice(1);
+    }
+
+    const droppedCount = priorMessages.length - selected.length;
+    if (droppedCount > 0) {
+      const dropped = priorMessages.slice(0, droppedCount);
+      const summaryText = dropped.map((m) => `${m.role}: ${m.content}`).join(" | ");
+      const truncated = summaryText.slice(0, MAX_SUMMARY_CHARS);
+      historySummary = `${truncated}${summaryText.length > MAX_SUMMARY_CHARS ? "..." : ""}`;
+    }
+
+    history = selected.map((m) => ({ role: m.role as "user" | "assistant", content: m.content }));
+  }
 
   // Step 1: one LLM call to select intent — SEE_TASKS, READ_DOCS, or NO_TOOL
   const intentResult = await selectToolIntent(message);
@@ -82,7 +120,7 @@ export async function* handleChatMessage(
   // Uses response_format: json_object so the model can include an optional
   // structured proposal sidecar in a single call — no second LLM call needed.
   // Tools are intentionally omitted — the model structurally cannot call another tool.
-  const messages = buildPrompt({ message, toolResult });
+  const messages = buildPrompt({ message, toolResult, history, historySummary });
 
   const response = await openai.chat.completions.create({
     model: "gpt-4o-mini",
@@ -120,6 +158,33 @@ export async function* handleChatMessage(
       role: "assistant",
       content: answerText,
     });
+
+    // Step 4: auto-title the session from the first exchange. Only runs
+    // while the session still has the default title, so it's a one-time,
+    // best-effort operation that never blocks the response on failure.
+    const session = await storage.getChatSession(sessionId);
+    if (session && session.title === "New Chat") {
+      try {
+        const titleResponse = await openai.chat.completions.create({
+          model: "gpt-4o-mini",
+          messages: [
+            {
+              role: "system",
+              content:
+                "Generate a short, plain-text chat title (3-6 words) summarizing the exchange below. Respond with only the title — no quotes, no punctuation at the end.",
+            },
+            { role: "user", content: `User: ${message}\nAssistant: ${answerText}` },
+          ],
+          max_tokens: 20,
+        });
+        const title = titleResponse.choices[0]?.message?.content?.trim().replace(/^["']|["']$/g, "");
+        if (title) {
+          await storage.updateChatSessionTitle(sessionId, title.slice(0, 100));
+        }
+      } catch {
+        // Best-effort; a failed title generation should not break the chat response.
+      }
+    }
   }
 
   yield { type: "done" };

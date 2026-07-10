@@ -80,15 +80,22 @@ export type ToolResult = {
   suggestRetry?: string;
 };
 
+export type HistoryMessage = {
+  role: "user" | "assistant";
+  content: string;
+};
+
 export type PromptInput = {
   message: string;
   toolResult?: ToolResult;
+  history?: HistoryMessage[];
+  historySummary?: string;
 };
 
 export function buildPrompt(
   input: PromptInput
 ): OpenAI.Chat.Completions.ChatCompletionMessageParam[] {
-  const { message, toolResult } = input;
+  const { message, toolResult, history, historySummary } = input;
 
   let userContent: string;
 
@@ -114,8 +121,24 @@ export function buildPrompt(
     userContent = `=== ${section} ===\n${toolResult.content}\n\n---\n\nQuestion: ${message}`;
   }
 
-  return [
+  const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
     { role: "system", content: SYSTEM_PROMPT },
-    { role: "user", content: userContent },
   ];
+
+  if (historySummary) {
+    messages.push({
+      role: "system",
+      content: `Summary of earlier conversation in this session (older messages trimmed for length): ${historySummary}`,
+    });
+  }
+
+  if (history && history.length > 0) {
+    for (const turn of history) {
+      messages.push({ role: turn.role, content: turn.content });
+    }
+  }
+
+  messages.push({ role: "user", content: userContent });
+
+  return messages;
 }
