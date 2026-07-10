@@ -10,7 +10,7 @@ import { useAuth } from "@/lib/auth";
 import {
   Plus, Loader2, Pencil, FolderOpen, Sun, Moon, LogOut,
   Zap, BookOpen, Settings, PanelLeft, CalendarDays, AlignLeft, ExternalLink,
-  Flag, Trash2, Check, X
+  Flag, Trash2, Check, X, AlertTriangle
 } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
@@ -396,14 +396,12 @@ function ProjectCard({
   const STATUS_COLORS: Record<string, string> = {
     not_started: "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300",
     in_progress: "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300",
-    blocked: "bg-pink-100 text-pink-700 dark:bg-pink-900 dark:text-pink-300",
     needs_review: "bg-[#FF6F91]/15 text-[#FF6F91] dark:bg-[#FF6F91]/25 dark:text-[#FF6F91]",
     done: "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300",
   };
   const STATUS_LABELS: Record<string, string> = {
     not_started: "Not started",
     in_progress: "In progress",
-    blocked: "Blocked",
     needs_review: "Needs review",
     done: "Done",
   };
@@ -456,8 +454,11 @@ function ProjectCard({
             <button
               key={task.id}
               onClick={() => onEditTask(task)}
-              className="flex items-center justify-between gap-2 text-left px-2 py-1.5 rounded-lg hover:bg-muted transition-colors group"
+              className={`flex items-center justify-between gap-2 text-left px-2 py-1.5 rounded-lg hover:bg-muted transition-colors group ${
+                task.isBlocked ? "border border-red-500" : ""
+              }`}
             >
+              {task.isBlocked && <AlertTriangle className="w-3.5 h-3.5 text-red-600 dark:text-red-500 shrink-0" />}
               <span className="text-sm truncate flex-1">{task.title}</span>
               <span
                 className={`text-xs px-2 py-0.5 rounded-full font-medium shrink-0 ${STATUS_COLORS[task.status] ?? ""}`}

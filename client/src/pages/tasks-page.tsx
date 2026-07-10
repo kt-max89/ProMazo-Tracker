@@ -5,7 +5,7 @@ import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { useTheme } from "@/components/theme-provider";
 import {
-  Plus, Loader2, AlertCircle, CheckCircle2, Clock, Ban,
+  Plus, Loader2, AlertCircle, CheckCircle2, Clock, Ban, AlertTriangle,
   RotateCcw, Pencil, Sun, Moon, LogOut, Zap,
   Settings, BookOpen, PanelLeft, UserCircle2, Flag
 } from "lucide-react";
@@ -39,15 +39,6 @@ const STATUSES = [
     columnBg: "bg-blue-50 dark:bg-blue-950/30",
     columnBorder: "border-blue-200 dark:border-blue-900",
     headerColor: "text-blue-700 dark:text-blue-400",
-  },
-  {
-    value: "blocked",
-    label: "Blocked",
-    icon: Ban,
-    badgeColor: "bg-pink-100 text-pink-700 dark:bg-pink-900 dark:text-pink-300",
-    columnBg: "bg-pink-50 dark:bg-pink-950/20",
-    columnBorder: "border-pink-200 dark:border-pink-900",
-    headerColor: "text-pink-700 dark:text-pink-400",
   },
   {
     value: "needs_review",
@@ -100,9 +91,20 @@ function TaskCard({
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
       onClick={onClick}
-      className="bg-white dark:bg-card border rounded-lg p-3 cursor-grab active:cursor-grabbing hover:shadow-md hover:border-primary/30 transition-all group select-none"
+      data-blocked={task.isBlocked || undefined}
+      className={`bg-white dark:bg-card border rounded-lg p-3 cursor-grab active:cursor-grabbing hover:shadow-md transition-all group select-none ${
+        task.isBlocked
+          ? "border-2 border-red-500 dark:border-red-500 hover:border-red-500"
+          : "hover:border-primary/30"
+      }`}
     >
       <div className="flex items-start justify-between gap-2">
+        {task.isBlocked && (
+          <AlertTriangle
+            className="w-4 h-4 text-red-600 dark:text-red-500 shrink-0 mt-0.5"
+            data-testid={`icon-blocked-${task.id}`}
+          />
+        )}
         <p className="text-sm font-medium leading-snug flex-1" data-testid={`text-task-title-${task.id}`}>
           {task.title}
         </p>
@@ -116,8 +118,8 @@ function TaskCard({
           </span>
         </div>
       )}
-      {task.status === "blocked" && task.blockedReason && (
-        <div className="flex items-center gap-1 mt-2 text-xs text-pink-600 dark:text-pink-400">
+      {task.isBlocked && task.blockedReason && (
+        <div className="flex items-center gap-1 mt-2 text-xs text-red-600 dark:text-red-500" data-testid={`text-blocked-reason-${task.id}`}>
           <Ban className="w-3 h-3 shrink-0" />
           <span className="truncate">{task.blockedReason}</span>
         </div>
@@ -155,11 +157,17 @@ function ArchivedTaskCard({ task, onRestore }: { task: Task; onRestore: () => vo
           Restore
         </Button>
       </div>
-      <div className="mt-2">
+      <div className="mt-2 flex items-center gap-1.5">
         <span className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium ${meta.badgeColor}`}>
           <Icon className="w-3 h-3" />
           {meta.label}
         </span>
+        {task.isBlocked && (
+          <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-400">
+            <AlertTriangle className="w-3 h-3" />
+            Blocked
+          </span>
+        )}
       </div>
     </div>
   );
@@ -220,10 +228,6 @@ export default function TasksPage() {
   function handleDrop(taskId: number, newStatus: string) {
     const task = tasks.find(t => t.id === taskId);
     if (!task || task.status === newStatus) return;
-    if (newStatus === "blocked") {
-      setEditTask({ ...task, status: "blocked" } as Task);
-      return;
-    }
     changeStatusMutation.mutate({ id: taskId, status: newStatus });
   }
 

@@ -5,10 +5,11 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Archive, X } from "lucide-react";
+import { Loader2, Archive, X, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -24,7 +25,6 @@ type AppUser = { id: number; displayName: string; email: string };
 const STATUSES = [
   { value: "not_started", label: "Not started" },
   { value: "in_progress", label: "In progress" },
-  { value: "blocked", label: "Blocked" },
   { value: "needs_review", label: "Needs review" },
   { value: "done", label: "Done" },
 ] as const;
@@ -33,15 +33,16 @@ type StatusValue = (typeof STATUSES)[number]["value"];
 const taskFormSchema = z.object({
   title: z.string().min(1, "Title is required"),
   description: z.string().optional(),
-  status: z.enum(["not_started", "in_progress", "blocked", "needs_review", "done"]),
+  status: z.enum(["not_started", "in_progress", "needs_review", "done"]),
+  isBlocked: z.boolean().optional(),
   blockedReason: z.string().optional(),
   assignedTo: z.number().nullable().optional(),
   projectId: z.number({ required_error: "Project is required" }).nullable(),
   milestoneId: z.number().nullable().optional(),
 }).refine(data => {
-  if (data.status === "blocked" && !data.blockedReason?.trim()) return false;
+  if (data.isBlocked && !data.blockedReason?.trim()) return false;
   return true;
-}, { message: "Blocked reason is required when status is blocked", path: ["blockedReason"] })
+}, { message: "Blocked reason is required when the task is marked as blocked", path: ["blockedReason"] })
   .refine(data => data.projectId != null, {
     message: "Project is required",
     path: ["projectId"],
@@ -71,6 +72,7 @@ export function TaskDetailPanel({
       title: task.title ?? "",
       description: task.description ?? "",
       status: (task.status as StatusValue) ?? "not_started",
+      isBlocked: task.isBlocked ?? false,
       blockedReason: task.blockedReason ?? "",
       assignedTo: task.assignedTo ?? null,
       projectId: task.projectId ?? null,
@@ -84,6 +86,7 @@ export function TaskDetailPanel({
       title: task.title ?? "",
       description: task.description ?? "",
       status: (task.status as StatusValue) ?? "not_started",
+      isBlocked: task.isBlocked ?? false,
       blockedReason: task.blockedReason ?? "",
       assignedTo: task.assignedTo ?? null,
       projectId: task.projectId ?? null,
@@ -92,7 +95,7 @@ export function TaskDetailPanel({
     setDescEditing(!task.description);
   }, [task.id]);
 
-  const watchStatus = form.watch("status");
+  const watchIsBlocked = form.watch("isBlocked");
   const watchProjectId = form.watch("projectId");
   const [descEditing, setDescEditing] = useState(!task.description);
 
@@ -266,7 +269,31 @@ export function TaskDetailPanel({
               )}
             />
 
-            {watchStatus === "blocked" && (
+            <FormField
+              control={form.control}
+              name="isBlocked"
+              render={({ field }) => (
+                <FormItem
+                  className={`flex items-center justify-between rounded-lg border px-3 py-2 ${
+                    field.value ? "border-red-500 bg-red-50 dark:bg-red-950/20" : ""
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    {field.value && <AlertTriangle className="w-4 h-4 text-red-600 dark:text-red-500" />}
+                    <FormLabel className="!mt-0">Blocked</FormLabel>
+                  </div>
+                  <FormControl>
+                    <Switch
+                      data-testid="switch-task-blocked"
+                      checked={field.value ?? false}
+                      onCheckedChange={field.onChange}
+                    />
+                  </FormControl>
+                </FormItem>
+              )}
+            />
+
+            {watchIsBlocked && (
               <FormField
                 control={form.control}
                 name="blockedReason"

@@ -1,6 +1,7 @@
 import {
   getTaskCounts,
   getTasksByStatus,
+  getBlockedTasks,
   searchTasks,
   listTasks,
   type TaskCounts,
@@ -13,6 +14,7 @@ export type CompactTask = {
   title: string;
   status: string;
   description?: string | null;
+  isBlocked?: boolean;
   blockedReason?: string | null;
 };
 
@@ -30,13 +32,14 @@ function toCompact(t: Task): CompactTask {
     title: t.title,
     status: t.status,
     description: t.description ? t.description.slice(0, 120) : null,
+    isBlocked: t.isBlocked,
     blockedReason: t.blockedReason ?? null,
   };
 }
 
 function formatCompact(t: CompactTask): string {
   let line = `- [${t.status}] ${t.title}`;
-  if (t.status === "blocked" && t.blockedReason) line += ` — blocked: ${t.blockedReason}`;
+  if (t.isBlocked) line += ` — BLOCKED${t.blockedReason ? `: ${t.blockedReason}` : ""}`;
   if (t.description) line += `\n  ${t.description}`;
   return line;
 }
@@ -47,7 +50,7 @@ export async function runSeeTasksTool(args: SeeTasksArgs): Promise<SeeTasksResul
   const counts = await getTaskCounts();
   const total = Object.values(counts).reduce((a, b) => a + b, 0);
 
-  const summaryLine = `Task counts (active): total=${total}, not_started=${counts.not_started}, in_progress=${counts.in_progress}, blocked=${counts.blocked}, needs_review=${counts.needs_review}, done=${counts.done}`;
+  const summaryLine = `Task counts (active): total=${total}, not_started=${counts.not_started}, in_progress=${counts.in_progress}, needs_review=${counts.needs_review}, done=${counts.done}`;
 
   if (args.mode === "summary") {
     const isEmpty = total === 0;
@@ -64,7 +67,9 @@ export async function runSeeTasksTool(args: SeeTasksArgs): Promise<SeeTasksResul
 
   let matched: Task[] = [];
 
-  if (args.status) {
+  if (args.isBlocked) {
+    matched = await getBlockedTasks();
+  } else if (args.status) {
     matched = await getTasksByStatus(args.status);
   } else if (args.query) {
     matched = await searchTasks(args.query);
@@ -78,7 +83,9 @@ export async function runSeeTasksTool(args: SeeTasksArgs): Promise<SeeTasksResul
   const parts: string[] = [summaryLine];
 
   if (compactTasks.length > 0) {
-    const label = args.status
+    const label = args.isBlocked
+      ? "\nBlocked tasks:"
+      : args.status
       ? `\n${args.status} tasks:`
       : args.query
       ? `\nTasks matching "${args.query}":`
@@ -96,7 +103,9 @@ export async function runSeeTasksTool(args: SeeTasksArgs): Promise<SeeTasksResul
     isEmpty,
     content,
     suggestRetry: isEmpty
-      ? args.status
+      ? args.isBlocked
+        ? "No blocked tasks were found. Should we try a broader search?"
+        : args.status
         ? `No tasks with status "${args.status}" were found. Should we try a different status or a broader search?`
         : args.query
         ? `No tasks matching "${args.query}" were found. Should we try a different keyword?`
