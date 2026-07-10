@@ -22,9 +22,27 @@ const statements = [
     archived_at TEXT
   )`,
   `ALTER TABLE tasks ADD COLUMN IF NOT EXISTS assigned_to INTEGER REFERENCES users(id)`,
+  // assigned_to is deprecated in favor of the task_assignees join table (see below), kept
+  // as an ALTER for older DBs and dropped again at the end of this list.
   `ALTER TABLE tasks ADD COLUMN IF NOT EXISTS is_blocked BOOLEAN NOT NULL DEFAULT false`,
   `ALTER TABLE tasks ADD COLUMN IF NOT EXISTS blocked_reason TEXT`,
   `ALTER TABLE tasks ADD COLUMN IF NOT EXISTS size TEXT`,
+  `CREATE TABLE IF NOT EXISTS task_assignees (
+    task_id INTEGER NOT NULL REFERENCES tasks(id),
+    user_id INTEGER NOT NULL REFERENCES users(id),
+    UNIQUE (task_id, user_id)
+  )`,
+  `DO $ BEGIN
+    ALTER TABLE task_assignees ADD CONSTRAINT task_assignees_unique UNIQUE (task_id, user_id);
+  EXCEPTION WHEN duplicate_table THEN NULL;
+  END $`,
+  `INSERT INTO task_assignees (task_id, user_id)
+    SELECT id, assigned_to FROM tasks
+    WHERE assigned_to IS NOT NULL
+      AND NOT EXISTS (
+        SELECT 1 FROM task_assignees ta WHERE ta.task_id = tasks.id AND ta.user_id = tasks.assigned_to
+      )`,
+  `ALTER TABLE tasks DROP COLUMN IF EXISTS assigned_to`,
 ];
 
 async function run() {

@@ -19,6 +19,7 @@ import {
 import ReactMarkdown from "react-markdown";
 import type { Task, Project, Milestone, TaskComment } from "@shared/schema";
 import { TaskComments } from "@/components/task-comments";
+import { MultiUserSelect } from "@/components/multi-user-select";
 
 type AppUser = { id: number; displayName: string; email: string };
 
@@ -40,7 +41,7 @@ const taskFormSchema = z.object({
   isBlocked: z.boolean().optional(),
   blockedReason: z.string().optional(),
   size: z.enum(["XXS", "XS", "S", "M", "L", "XL", "XXL"]).nullable().optional(),
-  assignedTo: z.number().nullable().optional(),
+  assigneeIds: z.array(z.number()).optional(),
   projectId: z.number({ required_error: "Project is required" }).nullable(),
   milestoneId: z.number().nullable().optional(),
 }).refine(data => {
@@ -79,7 +80,7 @@ export function TaskDetailPanel({
       isBlocked: task.isBlocked ?? false,
       blockedReason: task.blockedReason ?? "",
       size: task.size ?? null,
-      assignedTo: task.assignedTo ?? null,
+      assigneeIds: task.assigneeIds ?? [],
       projectId: task.projectId ?? null,
       milestoneId: task.milestoneId ?? null,
     },
@@ -94,7 +95,7 @@ export function TaskDetailPanel({
       isBlocked: task.isBlocked ?? false,
       blockedReason: task.blockedReason ?? "",
       size: task.size ?? null,
-      assignedTo: task.assignedTo ?? null,
+      assigneeIds: task.assigneeIds ?? [],
       projectId: task.projectId ?? null,
       milestoneId: task.milestoneId ?? null,
     });
@@ -317,26 +318,18 @@ export function TaskDetailPanel({
 
             <FormField
               control={form.control}
-              name="assignedTo"
+              name="assigneeIds"
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Assigned to</FormLabel>
-                  <Select
-                    onValueChange={v => field.onChange(v === "none" ? null : parseInt(v))}
-                    value={field.value != null ? String(field.value) : "none"}
-                  >
-                    <FormControl>
-                      <SelectTrigger data-testid="select-task-assignee">
-                        <SelectValue placeholder="Unassigned" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      <SelectItem value="none">Unassigned</SelectItem>
-                      {users.map(u => (
-                        <SelectItem key={u.id} value={String(u.id)}>{u.displayName}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <FormControl>
+                    <MultiUserSelect
+                      users={users}
+                      value={field.value ?? []}
+                      onChange={field.onChange}
+                      testId="select-task-assignee"
+                    />
+                  </FormControl>
                   <FormMessage />
                 </FormItem>
               )}

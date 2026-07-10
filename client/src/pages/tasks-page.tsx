@@ -81,7 +81,7 @@ function TaskCard({
   onDragStart: (e: React.DragEvent) => void;
   onDragEnd: () => void;
 }) {
-  const assignee = task.assignedTo != null ? users.find(u => u.id === task.assignedTo) : null;
+  const assignees = users.filter(u => task.assigneeIds.includes(u.id));
   const milestone = task.milestoneId != null ? milestones.find(m => m.id === task.milestoneId) : null;
 
   return (
@@ -137,10 +137,10 @@ function TaskCard({
           <span className="truncate">{task.blockedReason}</span>
         </div>
       )}
-      {assignee && (
+      {assignees.length > 0 && (
         <div className="flex items-center gap-1 mt-2 text-xs text-muted-foreground" data-testid={`text-assignee-${task.id}`}>
           <UserCircle2 className="w-3.5 h-3.5 shrink-0" />
-          <span className="truncate">{assignee.displayName}</span>
+          <span className="truncate">{assignees.map(a => a.displayName).join(", ")}</span>
         </div>
       )}
     </div>

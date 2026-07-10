@@ -526,19 +526,19 @@ export async function registerRoutes(
       const allUsers = await storage.getAllUsers();
       let created = 0;
       for (const draft of proposal.tasks) {
-        let assignedTo: number | null = null;
+        let assigneeIds: number[] = [];
         if (draft.assignedToName) {
           const found = allUsers.find(
             (u) => u.displayName.toLowerCase() === draft.assignedToName!.toLowerCase()
           );
-          if (found) assignedTo = found.id;
+          if (found) assigneeIds = [found.id];
         }
         await createTask({
           title: draft.title,
           description: draft.description ?? null,
           status: "not_started",
           createdBy: req.user!.id,
-          assignedTo,
+          assigneeIds,
         });
         created++;
       }

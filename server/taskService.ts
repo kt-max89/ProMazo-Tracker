@@ -1,6 +1,6 @@
-import { eq, and, or, ilike } from "drizzle-orm";
+import { eq, and, or, ilike, inArray } from "drizzle-orm";
 import { db } from "./db";
-import { tasksTable } from "./schema";
+import { tasksTable, taskAssigneesTable } from "./schema";
 import type { Task, InsertTask } from "@shared/schema";
 import { getProject } from "./projectService";
 import { getMilestone } from "./milestoneService";
@@ -15,7 +15,7 @@ type TaskSize = (typeof VALID_SIZES)[number];
 
 // ─── Row mapper ───────────────────────────────────────────────────────────────
 
-function mapTask(row: typeof tasksTable.$inferSelect): Task {
+function mapTask(row: typeof tasksTable.$inferSelect, assigneeIds: number[] = []): Task {
   return {
     id: row.id,
     title: row.title,
@@ -31,10 +31,45 @@ function mapTask(row: typeof tasksTable.$inferSelect): Task {
     archivedAt: row.archivedAt
       ? (row.archivedAt instanceof Date ? row.archivedAt.toISOString() : String(row.archivedAt))
       : null,
-    assignedTo: row.assignedTo,
+    assigneeIds,
     projectId: row.projectId,
     milestoneId: row.milestoneId ?? null,
   };
+}
+
+// ─── Assignee helpers ───────────────────────────────────────────────────────────
+
+async function getAssigneeIdsMap(taskIds: number[]): Promise<Map<number, number[]>> {
+  const map = new Map<number, number[]>();
+  if (taskIds.length === 0) return map;
+  const rows = await db
+    .select()
+    .from(taskAssigneesTable)
+    .where(inArray(taskAssigneesTable.taskId, taskIds));
+  for (const row of rows) {
+    const list = map.get(row.taskId) ?? [];
+    list.push(row.userId);
+    map.set(row.taskId, list);
+  }
+  return map;
+}
+
+async function getAssigneeIds(taskId: number): Promise<number[]> {
+  const map = await getAssigneeIdsMap([taskId]);
+  return map.get(taskId) ?? [];
+}
+
+async function setAssignees(taskId: number, assigneeIds: number[]): Promise<void> {
+  await db.delete(taskAssigneesTable).where(eq(taskAssigneesTable.taskId, taskId));
+  const unique = Array.from(new Set(assigneeIds));
+  if (unique.length > 0) {
+    await db.insert(taskAssigneesTable).values(unique.map((userId) => ({ taskId, userId })));
+  }
+}
+
+async function mapTasksWithAssignees(rows: (typeof tasksTable.$inferSelect)[]): Promise<Task[]> {
+  const map = await getAssigneeIdsMap(rows.map((r) => r.id));
+  return rows.map((row) => mapTask(row, map.get(row.id) ?? []));
 }
 
 // ─── CRUD ─────────────────────────────────────────────────────────────────────
@@ -45,7 +80,7 @@ export async function listTasks(filters: TaskFilters = {}): Promise<Task[]> {
     .select()
     .from(tasksTable)
     .where(eq(tasksTable.isArchived, archived));
-  return rows.map(mapTask);
+  return mapTasksWithAssignees(rows);
 }
 
 export async function createTask(input: InsertTask): Promise<Task> {
@@ -89,12 +124,15 @@ export async function createTask(input: InsertTask): Promise<Task> {
       size: input.size ?? null,
       isArchived: false,
       createdBy: input.createdBy ?? null,
-      assignedTo: input.assignedTo ?? null,
       projectId: input.projectId ?? null,
       milestoneId: input.milestoneId ?? null,
     })
     .returning();
-  return mapTask(row);
+
+  if (input.assigneeIds && input.assigneeIds.length > 0) {
+    await setAssignees(row.id, input.assigneeIds);
+  }
+  return mapTask(row, input.assigneeIds ?? []);
 }
 
 export async function updateTask(id: number, input: Partial<InsertTask>): Promise<Task> {
@@ -158,7 +196,6 @@ export async function updateTask(id: number, input: Partial<InsertTask>): Promis
   }
   if (input.blockedReason !== undefined) set.blockedReason = input.blockedReason;
   if (input.size !== undefined) set.size = input.size;
-  if (input.assignedTo !== undefined) set.assignedTo = input.assignedTo;
   if (input.projectId !== undefined) set.projectId = input.projectId;
   if (input.milestoneId !== undefined) set.milestoneId = input.milestoneId;
 
@@ -168,7 +205,15 @@ export async function updateTask(id: number, input: Partial<InsertTask>): Promis
     .where(eq(tasksTable.id, id))
     .returning();
   if (!updated) throw new Error("Task not found");
-  return mapTask(updated);
+
+  let assigneeIds: number[];
+  if (input.assigneeIds !== undefined) {
+    await setAssignees(id, input.assigneeIds);
+    assigneeIds = input.assigneeIds;
+  } else {
+    assigneeIds = await getAssigneeIds(id);
+  }
+  return mapTask(updated, assigneeIds);
 }
 
 export async function archiveTask(id: number): Promise<Task> {
@@ -178,7 +223,7 @@ export async function archiveTask(id: number): Promise<Task> {
     .where(eq(tasksTable.id, id))
     .returning();
   if (!updated) throw new Error("Task not found");
-  return mapTask(updated);
+  return mapTask(updated, await getAssigneeIds(id));
 }
 
 export async function restoreTask(id: number): Promise<Task> {
@@ -188,7 +233,7 @@ export async function restoreTask(id: number): Promise<Task> {
     .where(eq(tasksTable.id, id))
     .returning();
   if (!updated) throw new Error("Task not found");
-  return mapTask(updated);
+  return mapTask(updated, await getAssigneeIds(id));
 }
 
 // ─── Context helpers ──────────────────────────────────────────────────────────
@@ -209,7 +254,7 @@ export async function getTasksByStatus(status: string): Promise<Task[]> {
     .select()
     .from(tasksTable)
     .where(and(eq(tasksTable.isArchived, false), eq(tasksTable.status, status)));
-  return rows.map(mapTask);
+  return mapTasksWithAssignees(rows);
 }
 
 export async function getBlockedTasks(): Promise<Task[]> {
@@ -217,7 +262,7 @@ export async function getBlockedTasks(): Promise<Task[]> {
     .select()
     .from(tasksTable)
     .where(and(eq(tasksTable.isArchived, false), eq(tasksTable.isBlocked, true)));
-  return rows.map(mapTask);
+  return mapTasksWithAssignees(rows);
 }
 
 export async function searchTasks(query: string): Promise<Task[]> {
@@ -233,12 +278,12 @@ export async function searchTasks(query: string): Promise<Task[]> {
         )
       )
     );
-  return rows.map(mapTask);
+  return mapTasksWithAssignees(rows);
 }
 
 function formatTaskLine(t: Task): string {
   let line = `- [${t.status}] ${t.title}`;
-  if (t.assignedTo) line += ` (assigned to user #${t.assignedTo})`;
+  if (t.assigneeIds.length > 0) line += ` (assigned to user${t.assigneeIds.length > 1 ? "s" : ""} ${t.assigneeIds.map((id) => `#${id}`).join(", ")})`;
   if (t.isBlocked) line += ` — BLOCKED${t.blockedReason ? `: ${t.blockedReason}` : ""}`;
   return line;
 }
@@ -255,7 +300,7 @@ export async function getCompactTaskContext(message: string): Promise<string> {
 
   if (lower.includes("blocked")) {
     const rows = await db.select().from(tasksTable).where(and(eq(tasksTable.isArchived, false), eq(tasksTable.isBlocked, true)));
-    const blockedTasks = rows.map(mapTask);
+    const blockedTasks = await mapTasksWithAssignees(rows);
     if (blockedTasks.length > 0) {
       parts.push("\nBlocked tasks:");
       blockedTasks.slice(0, 10).forEach((t) => parts.push(formatTaskLine(t)));

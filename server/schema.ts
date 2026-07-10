@@ -153,9 +153,19 @@ export const tasksTable = pgTable("tasks", {
     .defaultNow(),
   createdBy: integer("created_by").references(() => usersTable.id),
   archivedAt: timestamp("archived_at", { withTimezone: true }),
-  assignedTo: integer("assigned_to").references(() => usersTable.id),
   projectId: integer("project_id").references(() => projectsTable.id),
   milestoneId: integer("milestone_id").references(() => milestonesTable.id),
+});
+
+// ─── Task assignees (many-to-many) ─────────────────────────────────────────────
+
+export const taskAssigneesTable = pgTable("task_assignees", {
+  taskId: integer("task_id")
+    .notNull()
+    .references(() => tasksTable.id),
+  userId: integer("user_id")
+    .notNull()
+    .references(() => usersTable.id),
 });
 
 // ─── Task comments ────────────────────────────────────────────────────────────
