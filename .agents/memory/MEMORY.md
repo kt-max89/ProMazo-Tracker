@@ -2,3 +2,4 @@
 - [Persist.ts atomic writes](persist-atomic-writes.md) — REMOVED: file-based persist.ts deleted; all storage now via PostgreSQL + Drizzle ORM.
 - [PostgreSQL migration](postgres-migration.md) — Drizzle schema in server/schema.ts; DatabaseStorage in server/storage.ts; taskService/projectService use Drizzle queries; sessions via connect-pg-simple.
 - [Pre-existing table schema mismatches](postgres-migration.md) — prior task-agent merges created tables with text timestamps and TEXT[] arrays; required ALTER TABLE to fix before Drizzle could work.
+- [User-referencing FK delete rules](user-delete-fk-rules.md) — set-null/cascade rules needed on tasks/task_assignees/chat_sessions/citations so deleting a user doesn't error; drizzle-kit push is unreliable for FK delete-rule changes.

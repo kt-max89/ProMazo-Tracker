@@ -76,17 +76,15 @@ export type Project = {
   timeline: string | null;
   createdAt: string;
   updatedAt: string;
-  createdBy: number | null;
 };
 
 export type InsertProject = {
   name: string;
   description?: string | null;
   timeline?: string | null;
-  createdBy?: number | null;
 };
 
-export type UpdateProject = Partial<Omit<InsertProject, "createdBy">>;
+export type UpdateProject = Partial<InsertProject>;
 
 export type Milestone = {
   id: number;
@@ -157,10 +155,9 @@ export const insertProjectSchema = z.object({
   name: z.string().min(1, "Name is required"),
   description: z.string().nullable().optional(),
   timeline: z.string().nullable().optional(),
-  createdBy: z.number().nullable().optional(),
 });
 
-export const updateProjectSchema = insertProjectSchema.partial().omit({ createdBy: true });
+export const updateProjectSchema = insertProjectSchema.partial();
 
 export const insertMilestoneSchema = z.object({
   projectId: z.number(),
@@ -189,7 +186,7 @@ export const updateTaskSchema = insertTaskSchema.partial().omit({ createdBy: tru
 export type TaskComment = {
   id: number;
   taskId: number;
-  authorId: number;
+  authorId: number | null;
   body: string;
   createdAt: string;
 };

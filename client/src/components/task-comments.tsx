@@ -71,7 +71,7 @@ export function TaskComments({ taskId }: { taskId: number }) {
             >
               <div className="flex items-center justify-between mb-1">
                 <span className="text-sm font-medium">
-                  {userMap.get(c.authorId) ?? `User #${c.authorId}`}
+                  {c.authorId != null ? userMap.get(c.authorId) ?? `User #${c.authorId}` : "Deleted user"}
                 </span>
                 <span className="text-xs text-muted-foreground">
                   {formatDateTime(c.createdAt)}

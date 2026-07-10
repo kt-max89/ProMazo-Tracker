@@ -13,7 +13,6 @@ function mapProject(row: typeof projectsTable.$inferSelect): Project {
     timeline: row.timeline,
     createdAt: row.createdAt instanceof Date ? row.createdAt.toISOString() : String(row.createdAt),
     updatedAt: row.updatedAt instanceof Date ? row.updatedAt.toISOString() : String(row.updatedAt),
-    createdBy: row.createdBy,
   };
 }
 
@@ -38,7 +37,6 @@ export async function createProject(input: InsertProject): Promise<Project> {
       name: input.name.trim(),
       description: input.description ?? null,
       timeline: input.timeline ?? null,
-      createdBy: input.createdBy ?? null,
     })
     .returning();
   return mapProject(row);

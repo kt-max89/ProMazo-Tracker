@@ -59,7 +59,7 @@ export const citationsTable = pgTable("citations", {
   id: serial("id").primaryKey(),
   userId: integer("user_id")
     .notNull()
-    .references(() => usersTable.id),
+    .references(() => usersTable.id, { onDelete: "cascade" }),
   documentId: integer("document_id")
     .notNull()
     .references(() => documentsTable.id),
@@ -78,7 +78,7 @@ export const chatSessionsTable = pgTable("chat_sessions", {
   id: serial("id").primaryKey(),
   userId: integer("user_id")
     .notNull()
-    .references(() => usersTable.id),
+    .references(() => usersTable.id, { onDelete: "cascade" }),
   title: text("title").notNull().default("New Chat"),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
@@ -92,7 +92,7 @@ export const chatMessagesTable = pgTable("chat_messages", {
   id: serial("id").primaryKey(),
   sessionId: integer("session_id")
     .notNull()
-    .references(() => chatSessionsTable.id),
+    .references(() => chatSessionsTable.id, { onDelete: "cascade" }),
   role: text("role").notNull(),
   content: text("content").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true })
@@ -113,7 +113,6 @@ export const projectsTable = pgTable("projects", {
   updatedAt: timestamp("updated_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
-  createdBy: integer("created_by").references(() => usersTable.id),
 });
 
 // ─── Milestones ──────────────────────────────────────────────────────────────
@@ -151,7 +150,7 @@ export const tasksTable = pgTable("tasks", {
   updatedAt: timestamp("updated_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
-  createdBy: integer("created_by").references(() => usersTable.id),
+  createdBy: integer("created_by").references(() => usersTable.id, { onDelete: "set null" }),
   archivedAt: timestamp("archived_at", { withTimezone: true }),
   projectId: integer("project_id").references(() => projectsTable.id),
   milestoneId: integer("milestone_id").references(() => milestonesTable.id),
@@ -165,7 +164,7 @@ export const taskAssigneesTable = pgTable("task_assignees", {
     .references(() => tasksTable.id),
   userId: integer("user_id")
     .notNull()
-    .references(() => usersTable.id),
+    .references(() => usersTable.id, { onDelete: "cascade" }),
 });
 
 // ─── Task comments ────────────────────────────────────────────────────────────
@@ -175,9 +174,7 @@ export const taskCommentsTable = pgTable("task_comments", {
   taskId: integer("task_id")
     .notNull()
     .references(() => tasksTable.id),
-  authorId: integer("author_id")
-    .notNull()
-    .references(() => usersTable.id),
+  authorId: integer("author_id").references(() => usersTable.id, { onDelete: "set null" }),
   body: text("body").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()

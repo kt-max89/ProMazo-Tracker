@@ -559,7 +559,7 @@ export async function registerRoutes(
 
   app.post("/api/projects", requireAuth, async (req, res) => {
     try {
-      const parsed = insertProjectSchema.safeParse({ ...req.body, createdBy: req.user!.id });
+      const parsed = insertProjectSchema.safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ message: parsed.error.errors[0].message });
       const project = await createProject(parsed.data);
 
