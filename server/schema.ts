@@ -155,3 +155,19 @@ export const tasksTable = pgTable("tasks", {
   projectId: integer("project_id").references(() => projectsTable.id),
   milestoneId: integer("milestone_id").references(() => milestonesTable.id),
 });
+
+// ─── Task comments ────────────────────────────────────────────────────────────
+
+export const taskCommentsTable = pgTable("task_comments", {
+  id: serial("id").primaryKey(),
+  taskId: integer("task_id")
+    .notNull()
+    .references(() => tasksTable.id),
+  authorId: integer("author_id")
+    .notNull()
+    .references(() => usersTable.id),
+  body: text("body").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});

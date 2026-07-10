@@ -180,6 +180,24 @@ export const insertTaskSchema = z.object({
 
 export const updateTaskSchema = insertTaskSchema.partial().omit({ createdBy: true });
 
+export type TaskComment = {
+  id: number;
+  taskId: number;
+  authorId: number;
+  body: string;
+  createdAt: string;
+};
+
+export type InsertTaskComment = {
+  taskId: number;
+  authorId: number;
+  body: string;
+};
+
+export const insertTaskCommentSchema = z.object({
+  body: z.string().min(1, "Comment cannot be empty"),
+});
+
 export const insertDocumentSchema = z.object({
   title: z.string().min(1),
   filename: z.string().min(1),

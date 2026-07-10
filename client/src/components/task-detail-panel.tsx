@@ -16,7 +16,8 @@ import {
   Form, FormControl, FormField, FormItem, FormLabel, FormMessage,
 } from "@/components/ui/form";
 import ReactMarkdown from "react-markdown";
-import type { Task, Project, Milestone } from "@shared/schema";
+import type { Task, Project, Milestone, TaskComment } from "@shared/schema";
+import { TaskComments } from "@/components/task-comments";
 
 type AppUser = { id: number; displayName: string; email: string };
 
@@ -340,6 +341,10 @@ export function TaskDetailPanel({
             />
           </form>
         </Form>
+
+        <div className="mt-6 pt-4 border-t">
+          <TaskComments taskId={task.id} />
+        </div>
       </div>
 
       {/* Footer actions */}

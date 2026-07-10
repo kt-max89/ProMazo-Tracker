@@ -5,8 +5,9 @@ import bcrypt from "bcrypt";
 import multer from "multer";
 import { storage } from "./storage";
 import { setupAuth, requireAuth, requireAdmin } from "./auth";
-import { registerSchema, loginSchema, insertTaskSchema, updateTaskSchema, insertProjectSchema, updateProjectSchema, insertMilestoneSchema, updateMilestoneSchema } from "@shared/schema";
+import { registerSchema, loginSchema, insertTaskSchema, updateTaskSchema, insertProjectSchema, updateProjectSchema, insertMilestoneSchema, updateMilestoneSchema, insertTaskCommentSchema } from "@shared/schema";
 import { listTasks, createTask, updateTask, archiveTask, restoreTask } from "./taskService";
+import { listCommentsByTaskId, createComment } from "./commentService";
 import { listProjects, getProject, createProject, updateProject } from "./projectService";
 import { listMilestones, listMilestonesByProject, getMilestone, createMilestone, updateMilestone, deleteMilestone } from "./milestoneService";
 import { chunkText, hashChunk, getEmbedding, getEmbeddings } from "./openai";
@@ -721,6 +722,37 @@ export async function registerRoutes(
       if (isNaN(id)) return res.status(400).json({ message: "Invalid task id" });
       const task = await restoreTask(id);
       return res.json(task);
+    } catch (err: any) {
+      return res.status(400).json({ message: err.message });
+    }
+  });
+
+  // Task comments
+  app.get("/api/tasks/:id/comments", requireAuth, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ message: "Invalid task id" });
+      const comments = await listCommentsByTaskId(id);
+      return res.json(comments);
+    } catch (err: any) {
+      return res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/tasks/:id/comments", requireAuth, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ message: "Invalid task id" });
+      const parsed = insertTaskCommentSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: parsed.error.errors[0].message });
+      }
+      const comment = await createComment({
+        taskId: id,
+        authorId: req.user!.id,
+        body: parsed.data.body,
+      });
+      return res.json(comment);
     } catch (err: any) {
       return res.status(400).json({ message: err.message });
     }
