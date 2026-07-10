@@ -7,7 +7,7 @@ import { getMilestone } from "./milestoneService";
 
 export type TaskFilters = { archived?: boolean };
 
-const VALID_STATUSES = ["not_started", "in_progress", "blocked", "done"] as const;
+const VALID_STATUSES = ["not_started", "in_progress", "blocked", "needs_review", "done"] as const;
 type TaskStatus = (typeof VALID_STATUSES)[number];
 
 // ─── Row mapper ───────────────────────────────────────────────────────────────
@@ -181,7 +181,7 @@ export type TaskCounts = Record<string, number>;
 
 export async function getTaskCounts(): Promise<TaskCounts> {
   const rows = await db.select().from(tasksTable).where(eq(tasksTable.isArchived, false));
-  const counts: TaskCounts = { not_started: 0, in_progress: 0, blocked: 0, done: 0 };
+  const counts: TaskCounts = { not_started: 0, in_progress: 0, blocked: 0, needs_review: 0, done: 0 };
   for (const t of rows) {
     counts[t.status] = (counts[t.status] ?? 0) + 1;
   }
@@ -226,10 +226,12 @@ export async function getCompactTaskContext(message: string): Promise<string> {
   const counts = await getTaskCounts();
   const total = Object.values(counts).reduce((a, b) => a + b, 0);
   parts.push(
-    `Task counts (active): total=${total}, not_started=${counts.not_started}, in_progress=${counts.in_progress}, blocked=${counts.blocked}, done=${counts.done}`
+    `Task counts (active): total=${total}, not_started=${counts.not_started}, in_progress=${counts.in_progress}, blocked=${counts.blocked}, needs_review=${counts.needs_review}, done=${counts.done}`
   );
 
   const statusKeywords: { keyword: string; status: string }[] = [
+    { keyword: "needs review", status: "needs_review" },
+    { keyword: "needs_review", status: "needs_review" },
     { keyword: "blocked", status: "blocked" },
     { keyword: "in progress", status: "in_progress" },
     { keyword: "in-progress", status: "in_progress" },

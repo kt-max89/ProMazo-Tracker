@@ -111,7 +111,7 @@ export type Task = {
   id: number;
   title: string;
   description: string | null;
-  status: "not_started" | "in_progress" | "blocked" | "done";
+  status: "not_started" | "in_progress" | "blocked" | "needs_review" | "done";
   blockedReason: string | null;
   isArchived: boolean;
   createdAt: string;
@@ -126,7 +126,7 @@ export type Task = {
 export type InsertTask = {
   title: string;
   description?: string | null;
-  status?: "not_started" | "in_progress" | "blocked" | "done";
+  status?: "not_started" | "in_progress" | "blocked" | "needs_review" | "done";
   blockedReason?: string | null;
   createdBy?: number | null;
   assignedTo?: number | null;
@@ -170,7 +170,7 @@ export const updateMilestoneSchema = insertMilestoneSchema.partial().omit({ proj
 export const insertTaskSchema = z.object({
   title: z.string().min(1, "Title is required"),
   description: z.string().nullable().optional(),
-  status: z.enum(["not_started", "in_progress", "blocked", "done"]).optional(),
+  status: z.enum(["not_started", "in_progress", "blocked", "needs_review", "done"]).optional(),
   blockedReason: z.string().nullable().optional(),
   createdBy: z.number().nullable().optional(),
   assignedTo: z.number().nullable().optional(),

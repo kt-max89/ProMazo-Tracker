@@ -50,6 +50,15 @@ const STATUSES = [
     headerColor: "text-pink-700 dark:text-pink-400",
   },
   {
+    value: "needs_review",
+    label: "Needs review",
+    icon: Flag,
+    badgeColor: "bg-[#FF6F91]/15 text-[#FF6F91] dark:bg-[#FF6F91]/25 dark:text-[#FF6F91]",
+    columnBg: "bg-[#FF6F91]/10 dark:bg-[#FF6F91]/10",
+    columnBorder: "border-[#FF6F91]/40 dark:border-[#FF6F91]/40",
+    headerColor: "text-[#FF6F91]",
+  },
+  {
     value: "done",
     label: "Done",
     icon: CheckCircle2,

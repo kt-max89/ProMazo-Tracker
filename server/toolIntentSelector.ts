@@ -10,7 +10,7 @@ export type ToolIntent = "SEE_TASKS" | "READ_DOCS" | "NO_TOOL";
 
 export type SeeTasksArgs = {
   query?: string;
-  status?: "not_started" | "in_progress" | "blocked" | "done";
+  status?: "not_started" | "in_progress" | "blocked" | "needs_review" | "done";
   mode?: "summary" | "matching_tasks";
   limit?: number;
 };
@@ -37,7 +37,7 @@ const TOOL_DEFINITIONS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
         properties: {
           status: {
             type: "string",
-            enum: ["not_started", "in_progress", "blocked", "done"],
+            enum: ["not_started", "in_progress", "blocked", "needs_review", "done"],
             description: "Filter tasks by a specific status",
           },
           query: {
@@ -146,6 +146,12 @@ export async function selectToolIntent(message: string): Promise<IntentResult> {
   return { intent: "NO_TOOL", args: {} };
 }
 
-function isValidStatus(val: unknown): val is "not_started" | "in_progress" | "blocked" | "done" {
-  return val === "not_started" || val === "in_progress" || val === "blocked" || val === "done";
+function isValidStatus(val: unknown): val is "not_started" | "in_progress" | "blocked" | "needs_review" | "done" {
+  return (
+    val === "not_started" ||
+    val === "in_progress" ||
+    val === "blocked" ||
+    val === "needs_review" ||
+    val === "done"
+  );
 }

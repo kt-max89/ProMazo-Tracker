@@ -27,6 +27,7 @@ const STATUSES = [
   { value: "not_started", label: "Not started" },
   { value: "in_progress", label: "In progress" },
   { value: "blocked", label: "Blocked" },
+  { value: "needs_review", label: "Needs review" },
   { value: "done", label: "Done" },
 ] as const;
 type StatusValue = (typeof STATUSES)[number]["value"];
@@ -34,7 +35,7 @@ type StatusValue = (typeof STATUSES)[number]["value"];
 const taskFormSchema = z.object({
   title: z.string().min(1, "Title is required"),
   description: z.string().optional(),
-  status: z.enum(["not_started", "in_progress", "blocked", "done"]),
+  status: z.enum(["not_started", "in_progress", "blocked", "needs_review", "done"]),
   blockedReason: z.string().optional(),
   assignedTo: z.number().nullable().optional(),
   projectId: z.number({ required_error: "Project is required" }).nullable(),

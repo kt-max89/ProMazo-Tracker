@@ -11,7 +11,7 @@ const statements = [
     id SERIAL PRIMARY KEY,
     title TEXT NOT NULL,
     description TEXT,
-    status TEXT NOT NULL DEFAULT 'not_started' CHECK (status IN ('not_started', 'in_progress', 'blocked', 'done')),
+    status TEXT NOT NULL DEFAULT 'not_started' CHECK (status IN ('not_started', 'in_progress', 'blocked', 'needs_review', 'done')),
     blocked_reason TEXT,
     is_archived BOOLEAN NOT NULL DEFAULT FALSE,
     created_at TEXT NOT NULL DEFAULT now()::text,

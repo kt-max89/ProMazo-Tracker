@@ -47,7 +47,7 @@ export async function runSeeTasksTool(args: SeeTasksArgs): Promise<SeeTasksResul
   const counts = await getTaskCounts();
   const total = Object.values(counts).reduce((a, b) => a + b, 0);
 
-  const summaryLine = `Task counts (active): total=${total}, not_started=${counts.not_started}, in_progress=${counts.in_progress}, blocked=${counts.blocked}, done=${counts.done}`;
+  const summaryLine = `Task counts (active): total=${total}, not_started=${counts.not_started}, in_progress=${counts.in_progress}, blocked=${counts.blocked}, needs_review=${counts.needs_review}, done=${counts.done}`;
 
   if (args.mode === "summary") {
     const isEmpty = total === 0;
