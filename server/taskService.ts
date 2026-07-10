@@ -10,6 +10,9 @@ export type TaskFilters = { archived?: boolean };
 const VALID_STATUSES = ["not_started", "in_progress", "needs_review", "done"] as const;
 type TaskStatus = (typeof VALID_STATUSES)[number];
 
+const VALID_SIZES = ["XXS", "XS", "S", "M", "L", "XL", "XXL"] as const;
+type TaskSize = (typeof VALID_SIZES)[number];
+
 // ─── Row mapper ───────────────────────────────────────────────────────────────
 
 function mapTask(row: typeof tasksTable.$inferSelect): Task {
@@ -20,6 +23,7 @@ function mapTask(row: typeof tasksTable.$inferSelect): Task {
     status: row.status as Task["status"],
     isBlocked: row.isBlocked,
     blockedReason: row.blockedReason,
+    size: (row.size as Task["size"]) ?? null,
     isArchived: row.isArchived,
     createdAt: row.createdAt instanceof Date ? row.createdAt.toISOString() : String(row.createdAt),
     updatedAt: row.updatedAt instanceof Date ? row.updatedAt.toISOString() : String(row.updatedAt),
@@ -54,6 +58,9 @@ export async function createTask(input: InsertTask): Promise<Task> {
   if (input.isBlocked && !input.blockedReason?.trim()) {
     throw new Error("Blocked reason is required when a task is marked as blocked");
   }
+  if (input.size != null && !VALID_SIZES.includes(input.size as TaskSize)) {
+    throw new Error(`Size must be one of: ${VALID_SIZES.join(", ")}`);
+  }
   if (input.projectId != null) {
     const proj = await getProject(input.projectId);
     if (!proj) throw new Error("Project not found");
@@ -79,6 +86,7 @@ export async function createTask(input: InsertTask): Promise<Task> {
       status: (input.status as TaskStatus) ?? "not_started",
       isBlocked: input.isBlocked ?? false,
       blockedReason: input.isBlocked ? (input.blockedReason ?? null) : null,
+      size: input.size ?? null,
       isArchived: false,
       createdBy: input.createdBy ?? null,
       assignedTo: input.assignedTo ?? null,
@@ -95,6 +103,9 @@ export async function updateTask(id: number, input: Partial<InsertTask>): Promis
   }
   if (input.status !== undefined && !VALID_STATUSES.includes(input.status as TaskStatus)) {
     throw new Error(`Status must be one of: ${VALID_STATUSES.join(", ")}`);
+  }
+  if (input.size != null && !VALID_SIZES.includes(input.size as TaskSize)) {
+    throw new Error(`Size must be one of: ${VALID_SIZES.join(", ")}`);
   }
 
   // Fetch current task to validate blocked reason merge
@@ -146,6 +157,7 @@ export async function updateTask(id: number, input: Partial<InsertTask>): Promis
     if (!input.isBlocked) set.blockedReason = null;
   }
   if (input.blockedReason !== undefined) set.blockedReason = input.blockedReason;
+  if (input.size !== undefined) set.size = input.size;
   if (input.assignedTo !== undefined) set.assignedTo = input.assignedTo;
   if (input.projectId !== undefined) set.projectId = input.projectId;
   if (input.milestoneId !== undefined) set.milestoneId = input.milestoneId;

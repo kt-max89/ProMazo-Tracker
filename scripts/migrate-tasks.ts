@@ -13,6 +13,7 @@ const statements = [
     description TEXT,
     status TEXT NOT NULL DEFAULT 'not_started' CHECK (status IN ('not_started', 'in_progress', 'needs_review', 'done')),
     is_blocked BOOLEAN NOT NULL DEFAULT false,
+    size TEXT,
     blocked_reason TEXT,
     is_archived BOOLEAN NOT NULL DEFAULT FALSE,
     created_at TEXT NOT NULL DEFAULT now()::text,
@@ -21,6 +22,9 @@ const statements = [
     archived_at TEXT
   )`,
   `ALTER TABLE tasks ADD COLUMN IF NOT EXISTS assigned_to INTEGER REFERENCES users(id)`,
+  `ALTER TABLE tasks ADD COLUMN IF NOT EXISTS is_blocked BOOLEAN NOT NULL DEFAULT false`,
+  `ALTER TABLE tasks ADD COLUMN IF NOT EXISTS blocked_reason TEXT`,
+  `ALTER TABLE tasks ADD COLUMN IF NOT EXISTS size TEXT`,
 ];
 
 async function run() {

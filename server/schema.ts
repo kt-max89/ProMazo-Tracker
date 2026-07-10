@@ -143,6 +143,7 @@ export const tasksTable = pgTable("tasks", {
   status: text("status").notNull().default("not_started"),
   isBlocked: boolean("is_blocked").notNull().default(false),
   blockedReason: text("blocked_reason"),
+  size: text("size"),
   isArchived: boolean("is_archived").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()

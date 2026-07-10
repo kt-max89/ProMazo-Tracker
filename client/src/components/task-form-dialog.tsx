@@ -32,12 +32,16 @@ const STATUSES = [
 ] as const;
 type StatusValue = (typeof STATUSES)[number]["value"];
 
+const SIZES = ["XXS", "XS", "S", "M", "L", "XL", "XXL"] as const;
+type SizeValue = (typeof SIZES)[number];
+
 const taskFormSchema = z.object({
   title: z.string().min(1, "Title is required"),
   description: z.string().optional(),
   status: z.enum(["not_started", "in_progress", "needs_review", "done"]),
   isBlocked: z.boolean().optional(),
   blockedReason: z.string().optional(),
+  size: z.enum(["XXS", "XS", "S", "M", "L", "XL", "XXL"]).nullable().optional(),
   assignedTo: z.number().nullable().optional(),
   projectId: z.number({ required_error: "Project is required" }).nullable(),
   milestoneId: z.number().nullable().optional(),
@@ -81,6 +85,7 @@ export function TaskFormDialog({
       status: (task?.status as StatusValue) ?? "not_started",
       isBlocked: task?.isBlocked ?? false,
       blockedReason: task?.blockedReason ?? "",
+      size: task?.size ?? null,
       assignedTo: task?.assignedTo ?? null,
       projectId: task?.projectId ?? defaultProjectId ?? null,
       milestoneId: task?.milestoneId ?? null,
@@ -327,6 +332,33 @@ export function TaskFormDialog({
                       <SelectItem value="none">Unassigned</SelectItem>
                       {users.map(u => (
                         <SelectItem key={u.id} value={String(u.id)}>{u.displayName}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="size"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Size <span className="text-muted-foreground text-xs font-normal">(optional)</span></FormLabel>
+                  <Select
+                    onValueChange={v => field.onChange(v === "none" ? null : (v as SizeValue))}
+                    value={field.value ?? "none"}
+                  >
+                    <FormControl>
+                      <SelectTrigger data-testid="select-task-size">
+                        <SelectValue placeholder="No size" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      <SelectItem value="none">No size</SelectItem>
+                      {SIZES.map(s => (
+                        <SelectItem key={s} value={s}>{s}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>

@@ -110,12 +110,25 @@ function TaskCard({
         </p>
         <Pencil className="w-3.5 h-3.5 text-muted-foreground opacity-0 group-hover:opacity-60 shrink-0 mt-0.5" />
       </div>
-      {milestone && (
-        <div className="flex items-center gap-1 mt-2" data-testid={`badge-milestone-${task.id}`}>
-          <span className="inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300 font-medium max-w-full">
-            <Flag className="w-2.5 h-2.5 shrink-0" />
-            <span className="truncate">{milestone.name}</span>
-          </span>
+      {(milestone || task.size) && (
+        <div className="flex items-center gap-1 mt-2 flex-wrap">
+          {milestone && (
+            <span
+              className="inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300 font-medium max-w-full"
+              data-testid={`badge-milestone-${task.id}`}
+            >
+              <Flag className="w-2.5 h-2.5 shrink-0" />
+              <span className="truncate">{milestone.name}</span>
+            </span>
+          )}
+          {task.size && (
+            <span
+              className="inline-flex items-center text-xs px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 font-medium"
+              data-testid={`badge-size-${task.id}`}
+            >
+              {task.size}
+            </span>
+          )}
         </div>
       )}
       {task.isBlocked && task.blockedReason && (

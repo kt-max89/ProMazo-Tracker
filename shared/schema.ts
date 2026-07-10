@@ -114,6 +114,7 @@ export type Task = {
   status: "not_started" | "in_progress" | "needs_review" | "done";
   isBlocked: boolean;
   blockedReason: string | null;
+  size: "XXS" | "XS" | "S" | "M" | "L" | "XL" | "XXL" | null;
   isArchived: boolean;
   createdAt: string;
   updatedAt: string;
@@ -130,6 +131,7 @@ export type InsertTask = {
   status?: "not_started" | "in_progress" | "needs_review" | "done";
   isBlocked?: boolean;
   blockedReason?: string | null;
+  size?: "XXS" | "XS" | "S" | "M" | "L" | "XL" | "XXL" | null;
   createdBy?: number | null;
   assignedTo?: number | null;
   projectId?: number | null;
@@ -175,6 +177,7 @@ export const insertTaskSchema = z.object({
   status: z.enum(["not_started", "in_progress", "needs_review", "done"]).optional(),
   isBlocked: z.boolean().optional(),
   blockedReason: z.string().nullable().optional(),
+  size: z.enum(["XXS", "XS", "S", "M", "L", "XL", "XXL"]).nullable().optional(),
   createdBy: z.number().nullable().optional(),
   assignedTo: z.number().nullable().optional(),
   projectId: z.number().nullable().optional(),
