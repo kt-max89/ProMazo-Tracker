@@ -72,10 +72,10 @@ export function MultiUserSelect({
           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
-        <Command>
+      <PopoverContent className="w-[--radix-popover-trigger-width] p-0 overflow-hidden">
+        <Command className="overflow-visible">
           <CommandInput placeholder="Search people..." />
-          <CommandList>
+          <CommandList className="max-h-52 overflow-y-auto overflow-x-hidden">
             <CommandEmpty>No one found.</CommandEmpty>
             <CommandGroup>
               {users.map(u => (
