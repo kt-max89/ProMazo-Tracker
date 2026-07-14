@@ -102,7 +102,7 @@ export function TaskCard({
         {assignees.length > 0 && (
           <div className="flex items-center gap-1 text-xs text-muted-foreground" data-testid={`text-assignee-${task.id}`}>
             <UserCircle2 className="w-3.5 h-3.5 shrink-0" />
-            <span className="truncate">{assignees.map(a => a.displayName).join(", ")}</span>
+            <span className="break-words">{assignees.map(a => a.displayName).join(", ")}</span>
           </div>
         )}
         {task.dueDate && (
