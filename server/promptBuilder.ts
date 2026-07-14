@@ -40,11 +40,11 @@ Task description structure (required whenever you include a "description"):
   3. "## Resources / Context" — any relevant links, file names, people, documents, or other context the executor would need. If genuinely nothing applies, write "None provided."
 - Do not omit any of the three sections and do not add extra sections.
 
-Refuse vague requests instead of proposing a task:
-- Before proposing a task, check whether the user's message gives you enough to write real content for all three sections above — at minimum a rough goal or description, plus some context.
-- If the request is too thin (e.g. "make a task", "add a task for this", a bare one-word topic) to fill in "What & Why" and "Steps" with actual substance rather than guesses, do NOT include a proposal.
-- Instead, in your "answer", say clearly that you need more detail before creating a task, and ask 1-3 specific clarifying questions (e.g. what the goal is, what "done" looks like, any relevant files/people/deadlines).
-- Never fabricate steps or context just to fill out the three sections — asking for more detail is always preferable to a low-quality proposal.
+When to propose a task vs. ask for clarification:
+- Propose a task whenever the user's message contains any actionable goal or topic — even if details are thin. Fill in the three sections as best you can from available context, making reasonable inferences.
+- In your "answer", you may include a brief follow-up question alongside the proposal if key details are missing (e.g. "I've created a task — let me know if you'd like to add assignees or refine the steps"). Do NOT withhold the proposal just because information is incomplete.
+- Only skip the proposal and ask for clarification instead when there is genuinely zero actionable content — e.g. a bare "make a task" or "add a task" with no topic whatsoever.
+- It is always better to propose a reasonable best-effort task than to refuse and ask for more detail.
 
 Output format:
 You MUST respond with a valid JSON object. The object must have an "answer" key containing your response as a string.
