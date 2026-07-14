@@ -2,6 +2,7 @@ import OpenAI from "openai";
 import { selectToolIntent } from "./toolIntentSelector";
 import { runSeeTasksTool } from "./seeTasksTool";
 import { runReadDocsTool } from "./readDocsTool";
+import { runSeeProjectsTool } from "./seeProjectsTool";
 import { buildPrompt, type ToolResult, type HistoryMessage } from "./promptBuilder";
 import { validateProposal, type ValidatedProposal } from "./proposalSchema";
 import type { DocChunk } from "./documentRetrievalService";
@@ -82,6 +83,14 @@ export async function* handleChatMessage(
   // Step 2: call exactly one tool once, or skip entirely — enforced structurally
   if (intentResult.intent === "SEE_TASKS") {
     const result = await runSeeTasksTool(intentResult.args);
+    toolResult = {
+      type: "tasks",
+      content: result.content,
+      isEmpty: result.isEmpty,
+      suggestRetry: result.suggestRetry,
+    };
+  } else if (intentResult.intent === "SEE_PROJECTS") {
+    const result = await runSeeProjectsTool(intentResult.args);
     toolResult = {
       type: "tasks",
       content: result.content,

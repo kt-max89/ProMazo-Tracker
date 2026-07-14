@@ -6,8 +6,13 @@ import {
   listTasks,
   type TaskCounts,
 } from "./taskService";
+import { listProjects } from "./projectService";
+import { listMilestones } from "./milestoneService";
 import type { Task } from "@shared/schema";
 import type { SeeTasksArgs } from "./toolIntentSelector";
+import { db } from "./db";
+import { usersTable } from "./schema";
+import { inArray } from "drizzle-orm";
 
 export type CompactTask = {
   id: number;
@@ -16,6 +21,9 @@ export type CompactTask = {
   description?: string | null;
   isBlocked?: boolean;
   blockedReason?: string | null;
+  projectName?: string | null;
+  milestoneName?: string | null;
+  assigneeNames?: string[];
 };
 
 export type SeeTasksResult = {
@@ -26,19 +34,46 @@ export type SeeTasksResult = {
   suggestRetry?: string;
 };
 
-function toCompact(t: Task): CompactTask {
-  return {
+async function enrichTasks(tasks: Task[]): Promise<CompactTask[]> {
+  if (tasks.length === 0) return [];
+
+  // Batch-fetch all projects, milestones, and users referenced by these tasks
+  const projectIds = Array.from(new Set(tasks.map((t) => t.projectId).filter((id): id is number => id != null)));
+  const milestoneIds = Array.from(new Set(tasks.map((t) => t.milestoneId).filter((id): id is number => id != null)));
+  const assigneeIds = Array.from(new Set(tasks.flatMap((t) => t.assigneeIds)));
+
+  const [allProjects, allMilestones, allUsers] = await Promise.all([
+    projectIds.length > 0 ? listProjects() : Promise.resolve([]),
+    milestoneIds.length > 0 ? listMilestones() : Promise.resolve([]),
+    assigneeIds.length > 0
+      ? db.select({ id: usersTable.id, displayName: usersTable.displayName })
+          .from(usersTable)
+          .where(inArray(usersTable.id, assigneeIds))
+      : Promise.resolve([]),
+  ]);
+
+  const projectMap = new Map(allProjects.map((p) => [p.id, p.name]));
+  const milestoneMap = new Map(allMilestones.map((m) => [m.id, m.name]));
+  const userMap = new Map(allUsers.map((u) => [u.id, u.displayName]));
+
+  return tasks.map((t) => ({
     id: t.id,
     title: t.title,
     status: t.status,
     description: t.description ? t.description.slice(0, 120) : null,
     isBlocked: t.isBlocked,
     blockedReason: t.blockedReason ?? null,
-  };
+    projectName: t.projectId != null ? (projectMap.get(t.projectId) ?? null) : null,
+    milestoneName: t.milestoneId != null ? (milestoneMap.get(t.milestoneId) ?? null) : null,
+    assigneeNames: t.assigneeIds.map((id) => userMap.get(id) ?? `User #${id}`),
+  }));
 }
 
 function formatCompact(t: CompactTask): string {
   let line = `- [${t.status}] ${t.title}`;
+  if (t.projectName) line += ` | Project: ${t.projectName}`;
+  if (t.milestoneName) line += ` | Milestone: ${t.milestoneName}`;
+  if (t.assigneeNames && t.assigneeNames.length > 0) line += ` | Assigned to: ${t.assigneeNames.join(", ")}`;
   if (t.isBlocked) line += ` — BLOCKED${t.blockedReason ? `: ${t.blockedReason}` : ""}`;
   if (t.description) line += `\n  ${t.description}`;
   return line;
@@ -78,7 +113,7 @@ export async function runSeeTasksTool(args: SeeTasksArgs): Promise<SeeTasksResul
   }
 
   matched = matched.slice(0, limit);
-  const compactTasks = matched.map(toCompact);
+  const compactTasks = await enrichTasks(matched);
 
   const parts: string[] = [summaryLine];
 

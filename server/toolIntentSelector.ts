@@ -6,7 +6,7 @@ if (!process.env.OPENAI_API_KEY) {
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY || "" });
 
-export type ToolIntent = "SEE_TASKS" | "READ_DOCS" | "NO_TOOL";
+export type ToolIntent = "SEE_TASKS" | "READ_DOCS" | "SEE_PROJECTS" | "NO_TOOL";
 
 export type SeeTasksArgs = {
   query?: string;
@@ -21,9 +21,15 @@ export type ReadDocsArgs = {
   limit?: number;
 };
 
+export type SeeProjectsArgs = {
+  projectId?: number;
+  query?: string;
+};
+
 export type IntentResult =
   | { intent: "SEE_TASKS"; args: SeeTasksArgs }
   | { intent: "READ_DOCS"; args: ReadDocsArgs }
+  | { intent: "SEE_PROJECTS"; args: SeeProjectsArgs }
   | { intent: "NO_TOOL"; args: Record<string, never> };
 
 const TOOL_DEFINITIONS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
@@ -88,12 +94,36 @@ const TOOL_DEFINITIONS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
       },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "see_projects",
+      description:
+        "Query live project and milestone data. Use this for questions about what projects exist, project details, milestones within a project, or project timelines and descriptions.",
+      parameters: {
+        type: "object",
+        properties: {
+          projectId: {
+            type: "number",
+            description: "Filter to a specific project by its numeric ID",
+          },
+          query: {
+            type: "string",
+            description: "Free-text search against project names and descriptions",
+          },
+        },
+        required: [],
+        additionalProperties: false,
+      },
+    },
+  },
 ];
 
 const INTENT_SYSTEM_PROMPT = `You are an intent router for the ProMazo Task Tracker assistant. Your only job is to decide whether to call one tool or none.
 
 Rules:
-- Call see_tasks for questions about task status, blockers, in-progress work, assignments, counts, or the task board.
+- Call see_projects for questions about what projects exist, project descriptions, timelines, milestones in a project, or anything project/milestone-level.
+- Call see_tasks for questions about task status, blockers, in-progress work, assignments, counts, or specific tasks on the task board.
 - Call read_docs for questions about standup notes, meeting logs, goals documents, or anything that was written/documented.
 - If both tools could help, pick the single best one for this specific question.
 - If the question is conversational, general, or doesn't need data, call NO tool.
@@ -145,6 +175,16 @@ export async function selectToolIntent(message: string): Promise<IntentResult> {
       args: {
         query: typeof parsed.query === "string" ? parsed.query : message,
         limit: Math.min(Math.max(1, Math.round(rawLimit)), 10),
+      },
+    };
+  }
+
+  if (toolCall.function.name === "see_projects") {
+    return {
+      intent: "SEE_PROJECTS",
+      args: {
+        projectId: typeof parsed.projectId === "number" ? parsed.projectId : undefined,
+        query: typeof parsed.query === "string" ? parsed.query : undefined,
       },
     };
   }
