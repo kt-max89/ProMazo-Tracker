@@ -10,6 +10,7 @@ import {
   boolean,
   integer,
   timestamp,
+  date,
   jsonb,
 } from "drizzle-orm/pg-core";
 
@@ -152,6 +153,7 @@ export const tasksTable = pgTable("tasks", {
     .defaultNow(),
   createdBy: integer("created_by").references(() => usersTable.id, { onDelete: "set null" }),
   archivedAt: timestamp("archived_at", { withTimezone: true }),
+  dueDate: date("due_date"),
   projectId: integer("project_id").references(() => projectsTable.id),
   milestoneId: integer("milestone_id").references(() => milestonesTable.id),
 });

@@ -31,6 +31,7 @@ function mapTask(row: typeof tasksTable.$inferSelect, assigneeIds: number[] = []
     archivedAt: row.archivedAt
       ? (row.archivedAt instanceof Date ? row.archivedAt.toISOString() : String(row.archivedAt))
       : null,
+    dueDate: row.dueDate ?? null,
     assigneeIds,
     projectId: row.projectId,
     milestoneId: row.milestoneId ?? null,
@@ -124,6 +125,7 @@ export async function createTask(input: InsertTask): Promise<Task> {
       size: input.size ?? null,
       isArchived: false,
       createdBy: input.createdBy ?? null,
+      dueDate: input.dueDate ?? null,
       projectId: input.projectId ?? null,
       milestoneId: input.milestoneId ?? null,
     })
@@ -196,6 +198,7 @@ export async function updateTask(id: number, input: Partial<InsertTask>): Promis
   }
   if (input.blockedReason !== undefined) set.blockedReason = input.blockedReason;
   if (input.size !== undefined) set.size = input.size;
+  if (input.dueDate !== undefined) set.dueDate = input.dueDate;
   if (input.projectId !== undefined) set.projectId = input.projectId;
   if (input.milestoneId !== undefined) set.milestoneId = input.milestoneId;
 

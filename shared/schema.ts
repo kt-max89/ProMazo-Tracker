@@ -118,6 +118,7 @@ export type Task = {
   updatedAt: string;
   createdBy: number | null;
   archivedAt: string | null;
+  dueDate: string | null;
   assigneeIds: number[];
   projectId: number | null;
   milestoneId: number | null;
@@ -131,6 +132,7 @@ export type InsertTask = {
   blockedReason?: string | null;
   size?: "XXS" | "XS" | "S" | "M" | "L" | "XL" | "XXL" | null;
   createdBy?: number | null;
+  dueDate?: string | null;
   assigneeIds?: number[];
   projectId?: number | null;
   milestoneId?: number | null;
@@ -176,6 +178,7 @@ export const insertTaskSchema = z.object({
   blockedReason: z.string().nullable().optional(),
   size: z.enum(["XXS", "XS", "S", "M", "L", "XL", "XXL"]).nullable().optional(),
   createdBy: z.number().nullable().optional(),
+  dueDate: z.string().nullable().optional(),
   assigneeIds: z.array(z.number()).optional(),
   projectId: z.number().nullable().optional(),
   milestoneId: z.number().nullable().optional(),

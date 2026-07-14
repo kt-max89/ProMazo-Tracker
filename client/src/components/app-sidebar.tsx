@@ -1,7 +1,7 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Link, useLocation } from "wouter";
-import { Plus, Loader2, MessageSquare, Trash2, PanelLeftClose, LayoutList, FolderOpen } from "lucide-react";
+import { Plus, Loader2, MessageSquare, Trash2, PanelLeftClose, LayoutList, FolderOpen, UserCheck } from "lucide-react";
 
 type ChatSession = {
   id: number;
@@ -14,7 +14,7 @@ type ChatSession = {
 interface AppSidebarProps {
   open: boolean;
   onToggle: (open: boolean) => void;
-  activePage: "chat" | "tasks" | "projects";
+  activePage: "chat" | "tasks" | "projects" | "my-tasks";
   activeSessionId?: number | null;
   onSelectSession?: (id: number) => void;
   onDeleteSession?: (e: React.MouseEvent, id: number) => void;
@@ -99,6 +99,19 @@ export function AppSidebar({
               >
                 <FolderOpen className="w-4 h-4" />
                 See Projects
+              </button>
+            </Link>
+            <Link href="/my-tasks">
+              <button
+                data-testid="link-sidebar-my-tasks"
+                className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  activePage === "my-tasks"
+                    ? "bg-primary/10 text-primary"
+                    : "hover:bg-muted text-foreground"
+                }`}
+              >
+                <UserCheck className="w-4 h-4" />
+                My Tasks
               </button>
             </Link>
           </div>

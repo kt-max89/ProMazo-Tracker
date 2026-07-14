@@ -43,6 +43,7 @@ const taskFormSchema = z.object({
   isBlocked: z.boolean().optional(),
   blockedReason: z.string().optional(),
   size: z.enum(["XXS", "XS", "S", "M", "L", "XL", "XXL"]).nullable().optional(),
+  dueDate: z.string().nullable().optional(),
   assigneeIds: z.array(z.number()).optional(),
   projectId: z.number({ required_error: "Project is required" }).nullable(),
   milestoneId: z.number().nullable().optional(),
@@ -87,6 +88,7 @@ export function TaskFormDialog({
       isBlocked: task?.isBlocked ?? false,
       blockedReason: task?.blockedReason ?? "",
       size: task?.size ?? null,
+      dueDate: task?.dueDate ?? null,
       assigneeIds: task?.assigneeIds ?? [],
       projectId: task?.projectId ?? defaultProjectId ?? null,
       milestoneId: task?.milestoneId ?? null,
@@ -326,6 +328,26 @@ export function TaskFormDialog({
                       value={field.value ?? []}
                       onChange={field.onChange}
                       testId="select-task-assignee"
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="dueDate"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Due date <span className="text-muted-foreground text-xs font-normal">(optional)</span></FormLabel>
+                  <FormControl>
+                    <input
+                      type="date"
+                      data-testid="input-due-date"
+                      className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                      value={field.value ?? ""}
+                      onChange={e => field.onChange(e.target.value || null)}
                     />
                   </FormControl>
                   <FormMessage />

@@ -5,9 +5,9 @@ import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { useTheme } from "@/components/theme-provider";
 import {
-  Plus, Loader2, AlertCircle, CheckCircle2, Clock, Ban, AlertTriangle,
-  RotateCcw, Pencil, Sun, Moon, LogOut, Zap,
-  Settings, BookOpen, PanelLeft, UserCircle2, Flag
+  Plus, Loader2, AlertCircle, CheckCircle2, Clock, AlertTriangle,
+  RotateCcw, Sun, Moon, LogOut, Zap,
+  Settings, BookOpen, PanelLeft, Flag
 } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
@@ -18,6 +18,7 @@ import type { Task, Project, Milestone } from "@shared/schema";
 import { AppSidebar } from "@/components/app-sidebar";
 import { TaskFormDialog } from "@/components/task-form-dialog";
 import { TaskDetailPanel } from "@/components/task-detail-panel";
+import { TaskCard } from "@/components/task-card";
 
 type AppUser = { id: number; displayName: string; email: string };
 
@@ -66,86 +67,6 @@ function statusMeta(value: string) {
   return STATUSES.find(s => s.value === value) ?? STATUSES[0];
 }
 
-function TaskCard({
-  task,
-  users,
-  milestones,
-  onClick,
-  onDragStart,
-  onDragEnd,
-}: {
-  task: Task;
-  users: AppUser[];
-  milestones: Milestone[];
-  onClick: () => void;
-  onDragStart: (e: React.DragEvent) => void;
-  onDragEnd: () => void;
-}) {
-  const assignees = users.filter(u => task.assigneeIds.includes(u.id));
-  const milestone = task.milestoneId != null ? milestones.find(m => m.id === task.milestoneId) : null;
-
-  return (
-    <div
-      data-testid={`card-task-${task.id}`}
-      draggable
-      onDragStart={onDragStart}
-      onDragEnd={onDragEnd}
-      onClick={onClick}
-      data-blocked={task.isBlocked || undefined}
-      className={`bg-white dark:bg-card border rounded-lg p-3 cursor-grab active:cursor-grabbing hover:shadow-md transition-all group select-none ${
-        task.isBlocked
-          ? "border-2 border-red-500 dark:border-red-500 hover:border-red-500"
-          : "hover:border-primary/30"
-      }`}
-    >
-      <div className="flex items-start justify-between gap-2">
-        {task.isBlocked && (
-          <AlertTriangle
-            className="w-4 h-4 text-red-600 dark:text-red-500 shrink-0 mt-0.5"
-            data-testid={`icon-blocked-${task.id}`}
-          />
-        )}
-        <p className="text-sm font-medium leading-snug flex-1" data-testid={`text-task-title-${task.id}`}>
-          {task.title}
-        </p>
-        <Pencil className="w-3.5 h-3.5 text-muted-foreground opacity-0 group-hover:opacity-60 shrink-0 mt-0.5" />
-      </div>
-      {(milestone || task.size) && (
-        <div className="flex items-center gap-1 mt-2 flex-wrap">
-          {milestone && (
-            <span
-              className="inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300 font-medium max-w-full"
-              data-testid={`badge-milestone-${task.id}`}
-            >
-              <Flag className="w-2.5 h-2.5 shrink-0" />
-              <span className="truncate">{milestone.name}</span>
-            </span>
-          )}
-          {task.size && (
-            <span
-              className="inline-flex items-center text-xs px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 font-medium"
-              data-testid={`badge-size-${task.id}`}
-            >
-              {task.size}
-            </span>
-          )}
-        </div>
-      )}
-      {task.isBlocked && task.blockedReason && (
-        <div className="flex items-center gap-1 mt-2 text-xs text-red-600 dark:text-red-500" data-testid={`text-blocked-reason-${task.id}`}>
-          <Ban className="w-3 h-3 shrink-0" />
-          <span className="truncate">{task.blockedReason}</span>
-        </div>
-      )}
-      {assignees.length > 0 && (
-        <div className="flex items-center gap-1 mt-2 text-xs text-muted-foreground" data-testid={`text-assignee-${task.id}`}>
-          <UserCircle2 className="w-3.5 h-3.5 shrink-0" />
-          <span className="truncate">{assignees.map(a => a.displayName).join(", ")}</span>
-        </div>
-      )}
-    </div>
-  );
-}
 
 function ArchivedTaskCard({ task, onRestore }: { task: Task; onRestore: () => void }) {
   const meta = statusMeta(task.status);

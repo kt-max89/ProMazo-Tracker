@@ -27,6 +27,7 @@ const statements = [
   `ALTER TABLE tasks ADD COLUMN IF NOT EXISTS is_blocked BOOLEAN NOT NULL DEFAULT false`,
   `ALTER TABLE tasks ADD COLUMN IF NOT EXISTS blocked_reason TEXT`,
   `ALTER TABLE tasks ADD COLUMN IF NOT EXISTS size TEXT`,
+  `ALTER TABLE tasks ADD COLUMN IF NOT EXISTS due_date DATE`,
   `CREATE TABLE IF NOT EXISTS task_assignees (
     task_id INTEGER NOT NULL REFERENCES tasks(id),
     user_id INTEGER NOT NULL REFERENCES users(id),
