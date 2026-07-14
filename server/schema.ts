@@ -175,7 +175,7 @@ export const taskCommentsTable = pgTable("task_comments", {
   id: serial("id").primaryKey(),
   taskId: integer("task_id")
     .notNull()
-    .references(() => tasksTable.id),
+    .references(() => tasksTable.id, { onDelete: "cascade" }),
   authorId: integer("author_id").references(() => usersTable.id, { onDelete: "set null" }),
   body: text("body").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true })

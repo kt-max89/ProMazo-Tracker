@@ -190,6 +190,7 @@ export type TaskComment = {
   id: number;
   taskId: number;
   authorId: number | null;
+  authorName: string | null;
   body: string;
   createdAt: string;
 };

@@ -7,8 +7,6 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import type { TaskComment } from "@shared/schema";
 
-type AppUser = { id: number; displayName: string; email: string };
-
 function formatDateTime(iso: string): string {
   const d = new Date(iso);
   return d.toLocaleString(undefined, {
@@ -26,9 +24,6 @@ export function TaskComments({ taskId }: { taskId: number }) {
     queryFn: () =>
       apiRequest("GET", `/api/tasks/${taskId}/comments`).then((r) => r.json()),
   });
-
-  const { data: users = [] } = useQuery<AppUser[]>({ queryKey: ["/api/users"] });
-  const userMap = new Map(users.map((u) => [u.id, u.displayName]));
 
   const addMutation = useMutation({
     mutationFn: (text: string) =>
@@ -71,7 +66,7 @@ export function TaskComments({ taskId }: { taskId: number }) {
             >
               <div className="flex items-center justify-between mb-1">
                 <span className="text-sm font-medium">
-                  {c.authorId != null ? userMap.get(c.authorId) ?? `User #${c.authorId}` : "Deleted user"}
+                  {c.authorName ?? "Deleted user"}
                 </span>
                 <span className="text-xs text-muted-foreground">
                   {formatDateTime(c.createdAt)}
