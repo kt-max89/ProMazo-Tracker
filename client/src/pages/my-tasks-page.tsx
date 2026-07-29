@@ -342,7 +342,7 @@ export default function MyTasksPage() {
 
           {/* Slide-in detail panel */}
           <div
-            className={`shrink-0 transition-all duration-300 ease-in-out overflow-hidden ${
+            className={`shrink-0 transition-all duration-300 ease-in-out overflow-x-hidden ${
               editTask ? "w-full sm:w-[420px] lg:w-[480px]" : "w-0"
             }`}
           >
