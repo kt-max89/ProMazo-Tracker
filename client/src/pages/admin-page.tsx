@@ -160,7 +160,6 @@ function UploadSection() {
   const [files, setFiles] = useState<FileStatus[]>([]);
   const [adminOnly, setAdminOnly] = useState(false);
   const [allowedDomain, setAllowedDomain] = useState("");
-  const [allowedUsersStr, setAllowedUsersStr] = useState("");
   const [uploading, setUploading] = useState(false);
 
   function handleFilesSelected(e: React.ChangeEvent<HTMLInputElement>) {
@@ -195,10 +194,6 @@ function UploadSection() {
         formData.append("title", files[i].file.name);
         formData.append("adminOnly", String(adminOnly));
         if (allowedDomain.trim()) formData.append("allowedDomain", allowedDomain.trim());
-        if (allowedUsersStr.trim()) {
-          const users = allowedUsersStr.split(",").map(s => s.trim()).filter(Boolean);
-          formData.append("allowedUsers", JSON.stringify(users));
-        }
 
         const res = await fetch("/api/documents", {
           method: "POST",
@@ -283,7 +278,7 @@ function UploadSection() {
           </div>
         )}
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="flex items-center gap-2">
             <input
               data-testid="input-admin-only"
@@ -293,7 +288,7 @@ function UploadSection() {
               onChange={(e) => setAdminOnly(e.target.checked)}
               className="rounded border-input"
             />
-            <label htmlFor="adminOnly" className="text-sm">Admin only</label>
+            <label htmlFor="adminOnly" className="text-sm">Admin only <span className="text-muted-foreground font-normal">(unchecked = all users)</span></label>
           </div>
           <div>
             <label className="text-sm font-medium mb-1.5 block">Allowed domain</label>
@@ -304,17 +299,6 @@ function UploadSection() {
               onChange={(e) => setAllowedDomain(e.target.value)}
               className="w-full px-3 py-2 rounded-lg border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
               placeholder="e.g. company.com"
-            />
-          </div>
-          <div>
-            <label className="text-sm font-medium mb-1.5 block">Allowed users (emails)</label>
-            <input
-              data-testid="input-allowed-users"
-              type="text"
-              value={allowedUsersStr}
-              onChange={(e) => setAllowedUsersStr(e.target.value)}
-              className="w-full px-3 py-2 rounded-lg border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-              placeholder="user@co.com, user2@co.com"
             />
           </div>
         </div>
@@ -377,7 +361,6 @@ function DriveImportSection() {
   const [nextPageToken, setNextPageToken] = useState<string | undefined>();
   const [adminOnly, setAdminOnly] = useState(false);
   const [allowedDomain, setAllowedDomain] = useState("");
-  const [allowedUsersStr, setAllowedUsersStr] = useState("");
   const [folderImporting, setFolderImporting] = useState(false);
   const [folderResults, setFolderResults] = useState<FolderImportResult[] | null>(null);
 
@@ -457,9 +440,7 @@ function DriveImportSection() {
           mimeType: file.mimeType,
           adminOnly,
           allowedDomain: allowedDomain.trim() || null,
-          allowedUsers: allowedUsersStr.trim()
-            ? allowedUsersStr.split(",").map(s => s.trim()).filter(Boolean)
-            : [],
+          allowedUsers: [],
         }),
       });
       if (!res.ok) {
@@ -572,7 +553,7 @@ function DriveImportSection() {
       </div>
 
       {mode === "files" && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
           <div className="flex items-center gap-2">
             <input
               data-testid="input-drive-admin-only"
@@ -582,7 +563,7 @@ function DriveImportSection() {
               onChange={(e) => setAdminOnly(e.target.checked)}
               className="rounded border-input"
             />
-            <label htmlFor="driveAdminOnly" className="text-sm">Admin only</label>
+            <label htmlFor="driveAdminOnly" className="text-sm">Admin only <span className="text-muted-foreground font-normal">(unchecked = all users)</span></label>
           </div>
           <div>
             <label className="text-sm font-medium mb-1.5 block">Allowed domain</label>
@@ -593,17 +574,6 @@ function DriveImportSection() {
               onChange={(e) => setAllowedDomain(e.target.value)}
               className="w-full px-3 py-2 rounded-lg border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
               placeholder="e.g. company.com"
-            />
-          </div>
-          <div>
-            <label className="text-sm font-medium mb-1.5 block">Allowed users (emails)</label>
-            <input
-              data-testid="input-drive-allowed-users"
-              type="text"
-              value={allowedUsersStr}
-              onChange={(e) => setAllowedUsersStr(e.target.value)}
-              className="w-full px-3 py-2 rounded-lg border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-              placeholder="user@co.com, user2@co.com"
             />
           </div>
         </div>
@@ -749,25 +719,19 @@ function DocumentAccessEditor({
   const { toast } = useToast();
   const [editAdminOnly, setEditAdminOnly] = useState(doc.adminOnly);
   const [editDomain, setEditDomain] = useState(doc.allowedDomain || "");
-  const [editUsers, setEditUsers] = useState((doc.allowedUsers || []).join(", "));
   const [saving, setSaving] = useState(false);
 
   const hasChanges =
     editAdminOnly !== doc.adminOnly ||
-    editDomain !== (doc.allowedDomain || "") ||
-    editUsers !== (doc.allowedUsers || []).join(", ");
+    editDomain !== (doc.allowedDomain || "");
 
   async function handleSaveAccess() {
     setSaving(true);
     try {
-      const allowedUsers = editUsers
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean);
       await apiRequest("PATCH", `/api/documents/${doc.id}`, {
         adminOnly: editAdminOnly,
         allowedDomain: editDomain.trim() || null,
-        allowedUsers,
+        allowedUsers: [],
       });
       queryClient.invalidateQueries({ queryKey: ["/api/documents"] });
       toast({ title: "Access settings updated" });
@@ -786,7 +750,7 @@ function DocumentAccessEditor({
 
       <div className="space-y-3">
         <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Access Control</h3>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <div className="flex items-center gap-2">
             <input
               data-testid={`input-edit-admin-only-${doc.id}`}
@@ -796,7 +760,7 @@ function DocumentAccessEditor({
               onChange={(e) => setEditAdminOnly(e.target.checked)}
               className="rounded border-input"
             />
-            <label htmlFor={`editAdminOnly-${doc.id}`} className="text-sm">Admin only</label>
+            <label htmlFor={`editAdminOnly-${doc.id}`} className="text-sm">Admin only <span className="text-muted-foreground font-normal">(unchecked = all users)</span></label>
           </div>
           <div>
             <label className="text-xs font-medium mb-1 block">Allowed domain</label>
@@ -807,17 +771,6 @@ function DocumentAccessEditor({
               onChange={(e) => setEditDomain(e.target.value)}
               className="w-full px-3 py-1.5 rounded-lg border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
               placeholder="e.g. company.com"
-            />
-          </div>
-          <div>
-            <label className="text-xs font-medium mb-1 block">Allowed users (emails)</label>
-            <input
-              data-testid={`input-edit-users-${doc.id}`}
-              type="text"
-              value={editUsers}
-              onChange={(e) => setEditUsers(e.target.value)}
-              className="w-full px-3 py-1.5 rounded-lg border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-              placeholder="user@co.com, user2@co.com"
             />
           </div>
         </div>
