@@ -7,7 +7,7 @@ import { useTheme } from "@/components/theme-provider";
 import {
   Plus, Loader2, AlertCircle, CheckCircle2, Clock, AlertTriangle,
   RotateCcw, Sun, Moon, LogOut, Zap,
-  Settings, BookOpen, PanelLeft, Flag
+  Settings, BookOpen, PanelLeft, Flag, Search, X as XIcon
 } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
@@ -119,6 +119,7 @@ export default function TasksPage() {
   const [draggingTaskId, setDraggingTaskId] = useState<number | null>(null);
   const [dragOverColumn, setDragOverColumn] = useState<string | null>(null);
   const [projectFilter, setProjectFilter] = useState<string>("all");
+  const [searchQuery, setSearchQuery] = useState("");
 
   const { data: tasks = [], isLoading } = useQuery<Task[]>({
     queryKey: showArchived ? ["/api/tasks", "archived"] : ["/api/tasks"],
@@ -165,9 +166,14 @@ export default function TasksPage() {
     changeStatusMutation.mutate({ id: taskId, status: newStatus });
   }
 
-  const filteredTasks = projectFilter === "all"
+  const projectFilteredTasks = projectFilter === "all"
     ? tasks
     : tasks.filter(t => t.projectId === parseInt(projectFilter));
+
+  const searchLower = searchQuery.trim().toLowerCase();
+  const filteredTasks = searchLower
+    ? projectFilteredTasks.filter(t => t.title.toLowerCase().includes(searchLower))
+    : projectFilteredTasks;
 
   const byStatus = (status: string) => filteredTasks.filter(t => t.status === status);
 
@@ -271,6 +277,28 @@ export default function TasksPage() {
               </SelectContent>
             </Select>
           )}
+
+          {/* Search */}
+          <div className="relative ml-auto">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+            <input
+              data-testid="input-task-search"
+              type="text"
+              placeholder="Search tasks…"
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              className="h-8 pl-8 pr-7 text-sm rounded-md border border-input bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring w-52"
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery("")}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                aria-label="Clear search"
+              >
+                <XIcon className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Split container: board + detail panel side by side */}

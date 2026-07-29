@@ -6,7 +6,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useTheme } from "@/components/theme-provider";
 import {
   Loader2, Sun, Moon, LogOut, Zap, Settings, BookOpen, PanelLeft,
-  UserCheck, AlertTriangle, RotateCcw,
+  UserCheck, AlertTriangle, RotateCcw, Search, X as XIcon,
 } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
@@ -109,6 +109,7 @@ export default function MyTasksPage() {
   const [draggingTaskId, setDraggingTaskId] = useState<number | null>(null);
   const [dragOverColumn, setDragOverColumn] = useState<string | null>(null);
   const [filterUserId, setFilterUserId] = useState<string>(String(user?.id ?? ""));
+  const [searchQuery, setSearchQuery] = useState("");
 
   const { data: tasks = [], isLoading } = useQuery<Task[]>({
     queryKey: ["/api/tasks"],
@@ -139,10 +140,14 @@ export default function MyTasksPage() {
   // The numeric user ID we're filtering by
   const numericFilterId = parseInt(filterUserId);
 
-  // Tasks for this view: assigned to the chosen person, not archived
-  const viewTasks = tasks.filter(
-    t => !t.isArchived && !isNaN(numericFilterId) && t.assigneeIds.includes(numericFilterId),
-  );
+  // Tasks for this view: assigned to the chosen person, not archived, matching search
+  const searchLower = searchQuery.trim().toLowerCase();
+  const viewTasks = tasks.filter(t => {
+    if (t.isArchived) return false;
+    if (isNaN(numericFilterId) || !t.assigneeIds.includes(numericFilterId)) return false;
+    if (searchLower && !t.title.toLowerCase().includes(searchLower)) return false;
+    return true;
+  });
 
   // "You" label helper
   const isMe = numericFilterId === user?.id;
@@ -237,8 +242,30 @@ export default function MyTasksPage() {
             </SelectContent>
           </Select>
 
+          {/* Search */}
+          <div className="relative ml-auto">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+            <input
+              data-testid="input-task-search"
+              type="text"
+              placeholder="Search tasks…"
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              className="h-8 pl-8 pr-7 text-sm rounded-md border border-input bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring w-52"
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery("")}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                aria-label="Clear search"
+              >
+                <XIcon className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+
           {!isLoading && (
-            <span className="text-sm text-muted-foreground">
+            <span className="text-sm text-muted-foreground shrink-0">
               {viewTasks.length} task{viewTasks.length !== 1 ? "s" : ""}
             </span>
           )}
