@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { useAuth } from "@/lib/auth";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { Send, FileText, BookOpen, LogOut, Zap, Settings, Loader2, Sun, Moon, PanelLeft, ListTodo, PlusCircle, X } from "lucide-react";
+import { Send, FileText, BookOpen, LogOut, Zap, Settings, Loader2, Sun, Moon, PanelLeft, ListTodo, PlusCircle, X, ChevronLeft, ChevronRight } from "lucide-react";
 import { useLocation, Link } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 import { useTheme } from "@/components/theme-provider";
@@ -41,6 +41,7 @@ type ProposedTaskDraft = {
   projectName?: string;
   milestoneName?: string;
   dueDate?: string;
+  size?: string;
 };
 
 type ValidatedProposal = {
@@ -48,6 +49,11 @@ type ValidatedProposal = {
   type: "create_task";
   tasks: ProposedTaskDraft[];
 };
+
+const TASK_SIZES = ["XXS", "XS", "S", "M", "L", "XL", "XXL"] as const;
+
+const fieldClass =
+  "w-full text-sm border border-input rounded-md px-3 py-2 bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-50";
 
 function ProposalModal({
   proposal,
@@ -63,172 +69,246 @@ function ProposalModal({
   const [editedTasks, setEditedTasks] = useState<ProposedTaskDraft[]>(() =>
     proposal.tasks.map((t) => ({ ...t }))
   );
+  const [currentIndex, setCurrentIndex] = useState(0);
 
   const { data: users } = useQuery<any[]>({ queryKey: ["/api/users"] });
   const { data: projects } = useQuery<any[]>({ queryKey: ["/api/projects"] });
   const { data: allMilestones } = useQuery<any[]>({ queryKey: ["/api/milestones"] });
 
-  function updateTask(index: number, field: keyof ProposedTaskDraft, value: string) {
+  const task = editedTasks[currentIndex];
+  const total = editedTasks.length;
+
+  function updateCurrent(field: keyof ProposedTaskDraft, value: string) {
     setEditedTasks((prev) =>
       prev.map((t, i) => {
-        if (i !== index) return t;
+        if (i !== currentIndex) return t;
         const updated = { ...t, [field]: value || undefined };
-        if (field === "projectName") {
-          updated.milestoneName = undefined;
-        }
+        if (field === "projectName") updated.milestoneName = undefined;
         return updated;
       })
     );
   }
 
-  function getMilestonesForProject(projectName?: string) {
+  const milestonesForProject = (() => {
     if (!allMilestones) return [];
-    if (!projectName || !projects) return allMilestones;
-    const project = projects.find((p) => p.name === projectName);
-    if (!project) return [];
-    return allMilestones.filter((m) => m.projectId === project.id);
-  }
+    if (!task.projectName || !projects) return [];
+    const proj = projects.find((p) => p.name === task.projectName);
+    if (!proj) return [];
+    return allMilestones.filter((m: any) => m.projectId === proj.id);
+  })();
 
-  const selectClass =
-    "w-full text-xs border border-input rounded-md px-2 py-1 bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-ring";
-  const inputClass =
-    "w-full text-xs border border-input rounded-md px-2 py-1 bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-ring";
+  const canCreate = editedTasks.every((t) => t.title.trim().length > 0);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" data-testid="proposal-modal">
-      <div className="bg-background border rounded-2xl shadow-xl w-full max-w-4xl mx-4 overflow-hidden">
-        <div className="flex items-center justify-between px-6 py-4 border-b">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
+      data-testid="proposal-modal"
+    >
+      <div className="bg-background border rounded-2xl shadow-2xl w-full max-w-lg flex flex-col max-h-[90vh]">
+
+        {/* ── Header ── */}
+        <div className="flex items-center justify-between px-6 py-4 border-b shrink-0">
           <div className="flex items-center gap-2">
-            <PlusCircle className="w-4 h-4 text-primary" />
-            <h2 className="font-semibold text-sm">Proposed Tasks</h2>
+            <PlusCircle className="w-4 h-4 text-primary shrink-0" />
+            <h2 className="font-semibold text-sm">
+              {total === 1 ? "Proposed Task" : `Proposed Tasks`}
+            </h2>
           </div>
-          <button
-            data-testid="button-close-proposal"
-            onClick={onNotYet}
-            className="p-1 rounded hover:bg-muted transition-colors"
-            disabled={isCreating}
-          >
-            <X className="w-4 h-4 text-muted-foreground" />
-          </button>
+
+          <div className="flex items-center gap-1">
+            {total > 1 && (
+              <>
+                <span className="text-xs text-muted-foreground mr-1">
+                  {currentIndex + 1} / {total}
+                </span>
+                <button
+                  onClick={() => setCurrentIndex((i) => Math.max(0, i - 1))}
+                  disabled={currentIndex === 0 || isCreating}
+                  className="p-1 rounded hover:bg-muted transition-colors disabled:opacity-30"
+                  aria-label="Previous task"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={() => setCurrentIndex((i) => Math.min(total - 1, i + 1))}
+                  disabled={currentIndex === total - 1 || isCreating}
+                  className="p-1 rounded hover:bg-muted transition-colors disabled:opacity-30"
+                  aria-label="Next task"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </>
+            )}
+            <button
+              data-testid="button-close-proposal"
+              onClick={onNotYet}
+              disabled={isCreating}
+              className="p-1 rounded hover:bg-muted transition-colors ml-1 disabled:opacity-50"
+              aria-label="Close"
+            >
+              <X className="w-4 h-4 text-muted-foreground" />
+            </button>
+          </div>
         </div>
 
-        <div className="px-6 py-3">
-          <p className="text-xs text-muted-foreground">
-            Review and edit these tasks before creating them. Changes here won't affect the chat.
-          </p>
+        {/* ── Scrollable form body ── */}
+        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5" data-testid={`proposal-row-${currentIndex}`}>
+
+          {/* Title */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+              Title <span className="text-destructive">*</span>
+            </label>
+            <input
+              data-testid={`proposal-row-${currentIndex}-title`}
+              className={fieldClass}
+              value={task.title}
+              onChange={(e) => updateCurrent("title", e.target.value)}
+              disabled={isCreating}
+              placeholder="Task title"
+            />
+          </div>
+
+          {/* Description */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+              Description
+            </label>
+            <textarea
+              data-testid={`proposal-row-${currentIndex}-description`}
+              className={`${fieldClass} resize-none`}
+              rows={6}
+              value={task.description ?? ""}
+              onChange={(e) => updateCurrent("description", e.target.value)}
+              disabled={isCreating}
+              placeholder="Add a description…"
+            />
+          </div>
+
+          {/* Project + Milestone */}
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Project</label>
+              <select
+                data-testid={`proposal-row-${currentIndex}-project`}
+                className={fieldClass}
+                value={task.projectName ?? ""}
+                onChange={(e) => updateCurrent("projectName", e.target.value)}
+                disabled={isCreating}
+              >
+                <option value="">— none —</option>
+                {projects?.map((p: any) => (
+                  <option key={p.id} value={p.name}>{p.name}</option>
+                ))}
+              </select>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Milestone</label>
+              <select
+                data-testid={`proposal-row-${currentIndex}-milestone`}
+                className={fieldClass}
+                value={task.milestoneName ?? ""}
+                onChange={(e) => updateCurrent("milestoneName", e.target.value)}
+                disabled={isCreating || milestonesForProject.length === 0}
+              >
+                <option value="">— none —</option>
+                {milestonesForProject.map((m: any) => (
+                  <option key={m.id} value={m.name}>{m.name}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {/* Assigned To + Due Date + Size */}
+          <div className="grid grid-cols-3 gap-4">
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Assigned To</label>
+              <select
+                data-testid={`proposal-row-${currentIndex}-assignee`}
+                className={fieldClass}
+                value={task.assignedToName ?? ""}
+                onChange={(e) => updateCurrent("assignedToName", e.target.value)}
+                disabled={isCreating}
+              >
+                <option value="">— unassigned —</option>
+                {users?.map((u: any) => (
+                  <option key={u.id} value={u.displayName}>{u.displayName}</option>
+                ))}
+              </select>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Due Date</label>
+              <input
+                type="date"
+                data-testid={`proposal-row-${currentIndex}-duedate`}
+                className={fieldClass}
+                value={task.dueDate ?? ""}
+                onChange={(e) => updateCurrent("dueDate", e.target.value)}
+                disabled={isCreating}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Size</label>
+              <select
+                data-testid={`proposal-row-${currentIndex}-size`}
+                className={fieldClass}
+                value={task.size ?? ""}
+                onChange={(e) => updateCurrent("size", e.target.value)}
+                disabled={isCreating}
+              >
+                <option value="">— none —</option>
+                {TASK_SIZES.map((s) => (
+                  <option key={s} value={s}>{s}</option>
+                ))}
+              </select>
+            </div>
+          </div>
         </div>
 
-        <div className="px-6 pb-2 overflow-x-auto">
-          <table className="w-full text-sm" data-testid="proposal-table">
-            <thead>
-              <tr className="border-b">
-                <th className="text-left py-2 pr-3 font-medium text-muted-foreground text-xs">Task Name</th>
-                <th className="text-left py-2 pr-3 font-medium text-muted-foreground text-xs">Description</th>
-                <th className="text-left py-2 pr-3 font-medium text-muted-foreground text-xs">Assigned To</th>
-                <th className="text-left py-2 pr-3 font-medium text-muted-foreground text-xs">Project</th>
-                <th className="text-left py-2 pr-3 font-medium text-muted-foreground text-xs">Milestone</th>
-                <th className="text-left py-2 font-medium text-muted-foreground text-xs">Due Date</th>
-              </tr>
-            </thead>
-            <tbody>
-              {editedTasks.map((task, i) => {
-                const milestonesForRow = getMilestonesForProject(task.projectName);
-                return (
-                  <tr key={i} className="border-b last:border-0" data-testid={`proposal-row-${i}`}>
-                    {/* Title — read-only */}
-                    <td className="py-2.5 pr-3 font-medium align-top min-w-[130px]">{task.title}</td>
+        {/* ── Footer ── */}
+        <div className="flex items-center justify-between px-6 py-4 border-t shrink-0">
+          {/* Dot indicators for multiple tasks */}
+          {total > 1 ? (
+            <div className="flex items-center gap-1.5">
+              {editedTasks.map((_, i) => (
+                <button
+                  key={i}
+                  onClick={() => setCurrentIndex(i)}
+                  disabled={isCreating}
+                  className={`w-2 h-2 rounded-full transition-colors ${
+                    i === currentIndex ? "bg-primary" : "bg-muted-foreground/30 hover:bg-muted-foreground/50"
+                  }`}
+                  aria-label={`Go to task ${i + 1}`}
+                />
+              ))}
+            </div>
+          ) : (
+            <span className="text-xs text-muted-foreground">
+              Review and edit before creating.
+            </span>
+          )}
 
-                    {/* Description — read-only summary */}
-                    <td className="py-2.5 pr-3 text-muted-foreground align-top max-w-[160px]">
-                      {task.description
-                        ? <span className="line-clamp-3 text-xs">{task.description.replace(/^##.*$/gm, "").trim().slice(0, 100) + (task.description.length > 100 ? "…" : "")}</span>
-                        : <span className="text-muted-foreground/40 text-xs">—</span>}
-                    </td>
-
-                    {/* Assigned To — user dropdown */}
-                    <td className="py-2 pr-3 align-top min-w-[130px]">
-                      <select
-                        data-testid={`proposal-row-${i}-assignee`}
-                        value={task.assignedToName || ""}
-                        onChange={(e) => updateTask(i, "assignedToName", e.target.value)}
-                        disabled={isCreating}
-                        className={selectClass}
-                      >
-                        <option value="">— unassigned —</option>
-                        {users?.map((u) => (
-                          <option key={u.id} value={u.displayName}>{u.displayName}</option>
-                        ))}
-                      </select>
-                    </td>
-
-                    {/* Project — project dropdown */}
-                    <td className="py-2 pr-3 align-top min-w-[130px]">
-                      <select
-                        data-testid={`proposal-row-${i}-project`}
-                        value={task.projectName || ""}
-                        onChange={(e) => updateTask(i, "projectName", e.target.value)}
-                        disabled={isCreating}
-                        className={selectClass}
-                      >
-                        <option value="">— none —</option>
-                        {projects?.map((p) => (
-                          <option key={p.id} value={p.name}>{p.name}</option>
-                        ))}
-                      </select>
-                    </td>
-
-                    {/* Milestone — filtered by selected project */}
-                    <td className="py-2 pr-3 align-top min-w-[130px]">
-                      <select
-                        data-testid={`proposal-row-${i}-milestone`}
-                        value={task.milestoneName || ""}
-                        onChange={(e) => updateTask(i, "milestoneName", e.target.value)}
-                        disabled={isCreating || milestonesForRow.length === 0}
-                        className={selectClass}
-                      >
-                        <option value="">— none —</option>
-                        {milestonesForRow.map((m) => (
-                          <option key={m.id} value={m.name}>{m.name}</option>
-                        ))}
-                      </select>
-                    </td>
-
-                    {/* Due Date — date input */}
-                    <td className="py-2 align-top min-w-[130px]">
-                      <input
-                        type="date"
-                        data-testid={`proposal-row-${i}-duedate`}
-                        value={task.dueDate || ""}
-                        onChange={(e) => updateTask(i, "dueDate", e.target.value)}
-                        disabled={isCreating}
-                        className={inputClass}
-                      />
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-
-        <div className="flex items-center justify-end gap-3 px-6 py-4 border-t">
-          <button
-            data-testid="button-proposal-not-yet"
-            onClick={onNotYet}
-            disabled={isCreating}
-            className="px-4 py-2 text-sm rounded-lg border hover:bg-muted transition-colors disabled:opacity-50"
-          >
-            Not Yet
-          </button>
-          <button
-            data-testid="button-proposal-create"
-            onClick={() => onCreateTasks(editedTasks)}
-            disabled={isCreating}
-            className="px-4 py-2 text-sm rounded-lg bg-primary text-primary-foreground hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center gap-2"
-          >
-            {isCreating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <PlusCircle className="w-3.5 h-3.5" />}
-            Create Tasks
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              data-testid="button-proposal-not-yet"
+              onClick={onNotYet}
+              disabled={isCreating}
+              className="px-4 py-2 text-sm rounded-lg border hover:bg-muted transition-colors disabled:opacity-50"
+            >
+              Not Yet
+            </button>
+            <button
+              data-testid="button-proposal-create"
+              onClick={() => onCreateTasks(editedTasks)}
+              disabled={isCreating || !canCreate}
+              className="px-4 py-2 text-sm rounded-lg bg-primary text-primary-foreground hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center gap-2"
+            >
+              {isCreating
+                ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                : <PlusCircle className="w-3.5 h-3.5" />}
+              {total === 1 ? "Create Task" : `Create ${total} Tasks`}
+            </button>
+          </div>
         </div>
       </div>
     </div>

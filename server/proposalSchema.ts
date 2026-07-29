@@ -1,6 +1,8 @@
 import { z } from "zod";
 import { randomUUID } from "crypto";
 
+const VALID_SIZES = ["XXS", "XS", "S", "M", "L", "XL", "XXL"] as const;
+
 const proposedTaskDraftSchema = z.object({
   title: z.string().min(1),
   description: z.string().optional(),
@@ -8,6 +10,7 @@ const proposedTaskDraftSchema = z.object({
   projectName: z.string().optional(),
   milestoneName: z.string().optional(),
   dueDate: z.string().optional(),
+  size: z.enum(VALID_SIZES).optional(),
 });
 
 export type ProposedTaskDraft = z.infer<typeof proposedTaskDraftSchema>;
@@ -39,6 +42,7 @@ export function validateProposal(raw: unknown): ValidatedProposal | null {
         projectName: parsed.data.projectName?.trim() || undefined,
         milestoneName: parsed.data.milestoneName?.trim() || undefined,
         dueDate: parsed.data.dueDate?.trim() || undefined,
+        size: parsed.data.size || undefined,
       });
     }
   }

@@ -535,6 +535,7 @@ export async function registerRoutes(
         projectId: number | undefined;
         milestoneId: number | undefined;
         dueDate: string | null;
+        size: string | null;
       };
 
       const resolvedDrafts: ResolvedDraft[] = [];
@@ -591,7 +592,9 @@ export async function registerRoutes(
           dueDate = draft.dueDate;
         }
 
-        resolvedDrafts.push({ title: draft.title, description: draft.description ?? null, assigneeIds, projectId, milestoneId, dueDate });
+        const VALID_SIZES = ["XXS", "XS", "S", "M", "L", "XL", "XXL"];
+        const size = draft.size && VALID_SIZES.includes(draft.size) ? draft.size : null;
+        resolvedDrafts.push({ title: draft.title, description: draft.description ?? null, assigneeIds, projectId, milestoneId, dueDate, size });
       }
 
       let created = 0;
@@ -605,6 +608,7 @@ export async function registerRoutes(
           projectId: resolved.projectId,
           milestoneId: resolved.milestoneId,
           dueDate: resolved.dueDate,
+          size: resolved.size,
         });
         created++;
       }
