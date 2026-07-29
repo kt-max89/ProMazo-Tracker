@@ -126,10 +126,36 @@ export async function* handleChatMessage(
   }
 
   // Step 3: build final prompt and call the model.
+  // Proactively load projects + milestones so the agent can always populate
+  // projectName/milestoneName in proposals without needing a separate tool call.
+  let projectsContext: string | undefined;
+  try {
+    const { runSeeProjectsTool: _seeProjects } = await import("./seeProjectsTool");
+    const projResult = await _seeProjects({});
+    if (!projResult.isEmpty) {
+      projectsContext = projResult.content;
+    }
+  } catch {
+    // Best-effort: if fetching projects fails, the agent just won't have the context
+  }
+
+  // Compute tomorrow's date (YYYY-MM-DD) in UTC
+  const tomorrow = new Date();
+  tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
+  const tomorrowDate = tomorrow.toISOString().slice(0, 10);
+
   // Uses response_format: json_object so the model can include an optional
   // structured proposal sidecar in a single call — no second LLM call needed.
   // Tools are intentionally omitted — the model structurally cannot call another tool.
-  const messages = buildPrompt({ message, toolResult, history, historySummary });
+  const messages = buildPrompt({
+    message,
+    toolResult,
+    history,
+    historySummary,
+    projectsContext,
+    currentUserName: user.displayName,
+    tomorrowDate,
+  });
 
   const response = await openai.chat.completions.create({
     model: "gpt-4o-mini",

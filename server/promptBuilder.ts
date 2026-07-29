@@ -31,7 +31,10 @@ Task proposal rules:
 - A proposal is optional — when in doubt, omit it.
 - Proposals must follow the exact JSON structure described below.
 - Never set "status" in a proposal — it will always be forced to "not_started" by the system.
-- "assignedToName" should be the person's display name if clearly mentioned; omit if uncertain.
+- "assignedToName": always default to the CURRENT USER's display name (provided below) unless the user explicitly names a different person.
+- "dueDate": always include tomorrow's date in YYYY-MM-DD format (provided below) unless the user specifies a different date.
+- "projectName": always try to pick the best matching project name from the AVAILABLE PROJECTS list (provided below). Only omit if the context gives no signal at all.
+- "milestoneName": always try to pick the best matching milestone name from the resolved project's milestones. Only omit if no milestone fits.
 
 Task description structure (required whenever you include a "description"):
 - The description MUST be organized into exactly three markdown sections, in this order:
@@ -58,7 +61,10 @@ Optionally include a "proposal" key with the following structure if you want to 
       {
         "title": "Task title (required)",
         "description": "## What & Why\\nExplain what and why here, naming any relevant skill/approach.\\n\\n## Steps\\n1. First step\\n2. Second step\\n\\n## Resources / Context\\nRelevant files, people, links, or 'None provided.'",
-        "assignedToName": "Person's name (optional)"
+        "assignedToName": "Current user's display name (default) or another person if explicitly named",
+        "projectName": "Exact project name from the available projects list (omit if no signal)",
+        "milestoneName": "Exact milestone name from the resolved project (omit if no signal)",
+        "dueDate": "Tomorrow's date in YYYY-MM-DD format (default) or user-specified date"
       }
     ]
   }
@@ -90,12 +96,15 @@ export type PromptInput = {
   toolResult?: ToolResult;
   history?: HistoryMessage[];
   historySummary?: string;
+  projectsContext?: string;
+  currentUserName?: string;
+  tomorrowDate?: string;
 };
 
 export function buildPrompt(
   input: PromptInput
 ): OpenAI.Chat.Completions.ChatCompletionMessageParam[] {
-  const { message, toolResult, history, historySummary } = input;
+  const { message, toolResult, history, historySummary, projectsContext, currentUserName, tomorrowDate } = input;
 
   let userContent: string;
 
@@ -124,6 +133,24 @@ export function buildPrompt(
   const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
     { role: "system", content: SYSTEM_PROMPT },
   ];
+
+  // Inject current user identity and default date for task proposals
+  const contextParts: string[] = [];
+  if (currentUserName) {
+    contextParts.push(`CURRENT USER: ${currentUserName} (use this as the default "assignedToName" in task proposals)`);
+  }
+  if (tomorrowDate) {
+    contextParts.push(`TOMORROW'S DATE: ${tomorrowDate} (use this as the default "dueDate" in task proposals)`);
+  }
+  if (projectsContext) {
+    contextParts.push(`AVAILABLE PROJECTS AND MILESTONES:\n${projectsContext}`);
+  }
+  if (contextParts.length > 0) {
+    messages.push({
+      role: "system",
+      content: contextParts.join("\n\n"),
+    });
+  }
 
   if (historySummary) {
     messages.push({

@@ -5,6 +5,9 @@ const proposedTaskDraftSchema = z.object({
   title: z.string().min(1),
   description: z.string().optional(),
   assignedToName: z.string().optional(),
+  projectName: z.string().optional(),
+  milestoneName: z.string().optional(),
+  dueDate: z.string().optional(),
 });
 
 export type ProposedTaskDraft = z.infer<typeof proposedTaskDraftSchema>;
@@ -33,6 +36,9 @@ export function validateProposal(raw: unknown): ValidatedProposal | null {
         title,
         description,
         assignedToName: parsed.data.assignedToName?.trim() || undefined,
+        projectName: parsed.data.projectName?.trim() || undefined,
+        milestoneName: parsed.data.milestoneName?.trim() || undefined,
+        dueDate: parsed.data.dueDate?.trim() || undefined,
       });
     }
   }

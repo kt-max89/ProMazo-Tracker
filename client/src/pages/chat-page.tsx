@@ -38,6 +38,9 @@ type ProposedTaskDraft = {
   title: string;
   description?: string;
   assignedToName?: string;
+  projectName?: string;
+  milestoneName?: string;
+  dueDate?: string;
 };
 
 type ValidatedProposal = {
@@ -85,17 +88,27 @@ function ProposalModal({
           <table className="w-full text-sm" data-testid="proposal-table">
             <thead>
               <tr className="border-b">
-                <th className="text-left py-2 pr-4 font-medium text-muted-foreground text-xs w-2/5">Task Name</th>
-                <th className="text-left py-2 pr-4 font-medium text-muted-foreground text-xs w-2/5">Description</th>
-                <th className="text-left py-2 font-medium text-muted-foreground text-xs w-1/5">Assigned To</th>
+                <th className="text-left py-2 pr-4 font-medium text-muted-foreground text-xs">Task Name</th>
+                <th className="text-left py-2 pr-4 font-medium text-muted-foreground text-xs">Description</th>
+                <th className="text-left py-2 pr-4 font-medium text-muted-foreground text-xs">Assigned To</th>
+                <th className="text-left py-2 pr-4 font-medium text-muted-foreground text-xs">Project</th>
+                <th className="text-left py-2 pr-4 font-medium text-muted-foreground text-xs">Milestone</th>
+                <th className="text-left py-2 font-medium text-muted-foreground text-xs">Due Date</th>
               </tr>
             </thead>
             <tbody>
               {proposal.tasks.map((task, i) => (
                 <tr key={i} className="border-b last:border-0" data-testid={`proposal-row-${i}`}>
                   <td className="py-2.5 pr-4 font-medium align-top">{task.title}</td>
-                  <td className="py-2.5 pr-4 text-muted-foreground align-top">{task.description || <span className="text-muted-foreground/40">—</span>}</td>
-                  <td className="py-2.5 text-muted-foreground align-top">{task.assignedToName || <span className="text-muted-foreground/40">—</span>}</td>
+                  <td className="py-2.5 pr-4 text-muted-foreground align-top max-w-[180px]">
+                    {task.description
+                      ? <span className="line-clamp-3">{task.description.replace(/^##.*$/gm, "").trim().slice(0, 120) + (task.description.length > 120 ? "…" : "")}</span>
+                      : <span className="text-muted-foreground/40">—</span>}
+                  </td>
+                  <td className="py-2.5 pr-4 text-muted-foreground align-top">{task.assignedToName || <span className="text-muted-foreground/40">—</span>}</td>
+                  <td className="py-2.5 pr-4 text-muted-foreground align-top">{task.projectName || <span className="text-muted-foreground/40">—</span>}</td>
+                  <td className="py-2.5 pr-4 text-muted-foreground align-top">{task.milestoneName || <span className="text-muted-foreground/40">—</span>}</td>
+                  <td className="py-2.5 text-muted-foreground align-top">{task.dueDate || <span className="text-muted-foreground/40">—</span>}</td>
                 </tr>
               ))}
             </tbody>

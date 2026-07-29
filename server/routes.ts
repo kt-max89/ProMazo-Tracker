@@ -524,21 +524,87 @@ export async function registerRoutes(
       }
 
       const allUsers = await storage.getAllUsers();
-      let created = 0;
+      const allProjects = await listProjects();
+
+      // Pre-resolve all drafts before creating any task, so a resolution failure
+      // doesn't leave a partial set of created tasks.
+      type ResolvedDraft = {
+        title: string;
+        description: string | null;
+        assigneeIds: number[];
+        projectId: number | undefined;
+        milestoneId: number | undefined;
+        dueDate: string | null;
+      };
+
+      const resolvedDrafts: ResolvedDraft[] = [];
       for (const draft of proposal.tasks) {
-        let assigneeIds: number[] = [];
+        // Resolve assignee — fall back to the approving user
+        let assigneeIds: number[] = [req.user!.id];
         if (draft.assignedToName) {
+          const nameLower = draft.assignedToName.toLowerCase();
           const found = allUsers.find(
-            (u) => u.displayName.toLowerCase() === draft.assignedToName!.toLowerCase()
+            (u) =>
+              u.displayName.toLowerCase() === nameLower ||
+              u.displayName.toLowerCase().includes(nameLower)
           );
           if (found) assigneeIds = [found.id];
         }
+
+        // Resolve project name → projectId (exact match first, then partial)
+        let projectId: number | undefined;
+        if (draft.projectName) {
+          const nameLower = draft.projectName.toLowerCase();
+          const matchedProject =
+            allProjects.find((p) => p.name.toLowerCase() === nameLower) ??
+            allProjects.find((p) => p.name.toLowerCase().includes(nameLower) || nameLower.includes(p.name.toLowerCase()));
+          if (matchedProject) projectId = matchedProject.id;
+        }
+
+        // Resolve milestone name → milestoneId (only within the resolved project).
+        // createTask requires milestoneId when projectId is set, so if we can't
+        // find a matching milestone we pick the first one; if the project has none
+        // we drop the projectId entirely to avoid a validation error.
+        let milestoneId: number | undefined;
+        if (projectId != null) {
+          const projectMilestones = await listMilestonesByProject(projectId);
+          if (projectMilestones.length === 0) {
+            // Project has no milestones — can't satisfy the invariant; drop project
+            projectId = undefined;
+          } else {
+            if (draft.milestoneName) {
+              const msLower = draft.milestoneName.toLowerCase();
+              const matchedMs =
+                projectMilestones.find((m) => m.name.toLowerCase() === msLower) ??
+                projectMilestones.find((m) => m.name.toLowerCase().includes(msLower) || msLower.includes(m.name.toLowerCase()));
+              milestoneId = matchedMs ? matchedMs.id : projectMilestones[0].id;
+            } else {
+              // No milestone name provided — use the first milestone as a safe default
+              milestoneId = projectMilestones[0].id;
+            }
+          }
+        }
+
+        // Validate dueDate: accept only YYYY-MM-DD format; drop otherwise
+        let dueDate: string | null = null;
+        if (draft.dueDate && /^\d{4}-\d{2}-\d{2}$/.test(draft.dueDate)) {
+          dueDate = draft.dueDate;
+        }
+
+        resolvedDrafts.push({ title: draft.title, description: draft.description ?? null, assigneeIds, projectId, milestoneId, dueDate });
+      }
+
+      let created = 0;
+      for (const resolved of resolvedDrafts) {
         await createTask({
-          title: draft.title,
-          description: draft.description ?? null,
+          title: resolved.title,
+          description: resolved.description,
           status: "not_started",
           createdBy: req.user!.id,
-          assigneeIds,
+          assigneeIds: resolved.assigneeIds,
+          projectId: resolved.projectId,
+          milestoneId: resolved.milestoneId,
+          dueDate: resolved.dueDate,
         });
         created++;
       }
