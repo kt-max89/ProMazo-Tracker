@@ -57,12 +57,46 @@ function ProposalModal({
 }: {
   proposal: ValidatedProposal;
   onNotYet: () => void;
-  onCreateTasks: () => void;
+  onCreateTasks: (tasks: ProposedTaskDraft[]) => void;
   isCreating: boolean;
 }) {
+  const [editedTasks, setEditedTasks] = useState<ProposedTaskDraft[]>(() =>
+    proposal.tasks.map((t) => ({ ...t }))
+  );
+
+  const { data: users } = useQuery<any[]>({ queryKey: ["/api/users"] });
+  const { data: projects } = useQuery<any[]>({ queryKey: ["/api/projects"] });
+  const { data: allMilestones } = useQuery<any[]>({ queryKey: ["/api/milestones"] });
+
+  function updateTask(index: number, field: keyof ProposedTaskDraft, value: string) {
+    setEditedTasks((prev) =>
+      prev.map((t, i) => {
+        if (i !== index) return t;
+        const updated = { ...t, [field]: value || undefined };
+        if (field === "projectName") {
+          updated.milestoneName = undefined;
+        }
+        return updated;
+      })
+    );
+  }
+
+  function getMilestonesForProject(projectName?: string) {
+    if (!allMilestones) return [];
+    if (!projectName || !projects) return allMilestones;
+    const project = projects.find((p) => p.name === projectName);
+    if (!project) return [];
+    return allMilestones.filter((m) => m.projectId === project.id);
+  }
+
+  const selectClass =
+    "w-full text-xs border border-input rounded-md px-2 py-1 bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-ring";
+  const inputClass =
+    "w-full text-xs border border-input rounded-md px-2 py-1 bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-ring";
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" data-testid="proposal-modal">
-      <div className="bg-background border rounded-2xl shadow-xl w-full max-w-2xl mx-4 overflow-hidden">
+      <div className="bg-background border rounded-2xl shadow-xl w-full max-w-4xl mx-4 overflow-hidden">
         <div className="flex items-center justify-between px-6 py-4 border-b">
           <div className="flex items-center gap-2">
             <PlusCircle className="w-4 h-4 text-primary" />
@@ -80,7 +114,7 @@ function ProposalModal({
 
         <div className="px-6 py-3">
           <p className="text-xs text-muted-foreground">
-            These tasks will only be created if you approve them.
+            Review and edit these tasks before creating them. Changes here won't affect the chat.
           </p>
         </div>
 
@@ -88,29 +122,91 @@ function ProposalModal({
           <table className="w-full text-sm" data-testid="proposal-table">
             <thead>
               <tr className="border-b">
-                <th className="text-left py-2 pr-4 font-medium text-muted-foreground text-xs">Task Name</th>
-                <th className="text-left py-2 pr-4 font-medium text-muted-foreground text-xs">Description</th>
-                <th className="text-left py-2 pr-4 font-medium text-muted-foreground text-xs">Assigned To</th>
-                <th className="text-left py-2 pr-4 font-medium text-muted-foreground text-xs">Project</th>
-                <th className="text-left py-2 pr-4 font-medium text-muted-foreground text-xs">Milestone</th>
+                <th className="text-left py-2 pr-3 font-medium text-muted-foreground text-xs">Task Name</th>
+                <th className="text-left py-2 pr-3 font-medium text-muted-foreground text-xs">Description</th>
+                <th className="text-left py-2 pr-3 font-medium text-muted-foreground text-xs">Assigned To</th>
+                <th className="text-left py-2 pr-3 font-medium text-muted-foreground text-xs">Project</th>
+                <th className="text-left py-2 pr-3 font-medium text-muted-foreground text-xs">Milestone</th>
                 <th className="text-left py-2 font-medium text-muted-foreground text-xs">Due Date</th>
               </tr>
             </thead>
             <tbody>
-              {proposal.tasks.map((task, i) => (
-                <tr key={i} className="border-b last:border-0" data-testid={`proposal-row-${i}`}>
-                  <td className="py-2.5 pr-4 font-medium align-top">{task.title}</td>
-                  <td className="py-2.5 pr-4 text-muted-foreground align-top max-w-[180px]">
-                    {task.description
-                      ? <span className="line-clamp-3">{task.description.replace(/^##.*$/gm, "").trim().slice(0, 120) + (task.description.length > 120 ? "…" : "")}</span>
-                      : <span className="text-muted-foreground/40">—</span>}
-                  </td>
-                  <td className="py-2.5 pr-4 text-muted-foreground align-top">{task.assignedToName || <span className="text-muted-foreground/40">—</span>}</td>
-                  <td className="py-2.5 pr-4 text-muted-foreground align-top">{task.projectName || <span className="text-muted-foreground/40">—</span>}</td>
-                  <td className="py-2.5 pr-4 text-muted-foreground align-top">{task.milestoneName || <span className="text-muted-foreground/40">—</span>}</td>
-                  <td className="py-2.5 text-muted-foreground align-top">{task.dueDate || <span className="text-muted-foreground/40">—</span>}</td>
-                </tr>
-              ))}
+              {editedTasks.map((task, i) => {
+                const milestonesForRow = getMilestonesForProject(task.projectName);
+                return (
+                  <tr key={i} className="border-b last:border-0" data-testid={`proposal-row-${i}`}>
+                    {/* Title — read-only */}
+                    <td className="py-2.5 pr-3 font-medium align-top min-w-[130px]">{task.title}</td>
+
+                    {/* Description — read-only summary */}
+                    <td className="py-2.5 pr-3 text-muted-foreground align-top max-w-[160px]">
+                      {task.description
+                        ? <span className="line-clamp-3 text-xs">{task.description.replace(/^##.*$/gm, "").trim().slice(0, 100) + (task.description.length > 100 ? "…" : "")}</span>
+                        : <span className="text-muted-foreground/40 text-xs">—</span>}
+                    </td>
+
+                    {/* Assigned To — user dropdown */}
+                    <td className="py-2 pr-3 align-top min-w-[130px]">
+                      <select
+                        data-testid={`proposal-row-${i}-assignee`}
+                        value={task.assignedToName || ""}
+                        onChange={(e) => updateTask(i, "assignedToName", e.target.value)}
+                        disabled={isCreating}
+                        className={selectClass}
+                      >
+                        <option value="">— unassigned —</option>
+                        {users?.map((u) => (
+                          <option key={u.id} value={u.displayName}>{u.displayName}</option>
+                        ))}
+                      </select>
+                    </td>
+
+                    {/* Project — project dropdown */}
+                    <td className="py-2 pr-3 align-top min-w-[130px]">
+                      <select
+                        data-testid={`proposal-row-${i}-project`}
+                        value={task.projectName || ""}
+                        onChange={(e) => updateTask(i, "projectName", e.target.value)}
+                        disabled={isCreating}
+                        className={selectClass}
+                      >
+                        <option value="">— none —</option>
+                        {projects?.map((p) => (
+                          <option key={p.id} value={p.name}>{p.name}</option>
+                        ))}
+                      </select>
+                    </td>
+
+                    {/* Milestone — filtered by selected project */}
+                    <td className="py-2 pr-3 align-top min-w-[130px]">
+                      <select
+                        data-testid={`proposal-row-${i}-milestone`}
+                        value={task.milestoneName || ""}
+                        onChange={(e) => updateTask(i, "milestoneName", e.target.value)}
+                        disabled={isCreating || milestonesForRow.length === 0}
+                        className={selectClass}
+                      >
+                        <option value="">— none —</option>
+                        {milestonesForRow.map((m) => (
+                          <option key={m.id} value={m.name}>{m.name}</option>
+                        ))}
+                      </select>
+                    </td>
+
+                    {/* Due Date — date input */}
+                    <td className="py-2 align-top min-w-[130px]">
+                      <input
+                        type="date"
+                        data-testid={`proposal-row-${i}-duedate`}
+                        value={task.dueDate || ""}
+                        onChange={(e) => updateTask(i, "dueDate", e.target.value)}
+                        disabled={isCreating}
+                        className={inputClass}
+                      />
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -126,7 +222,7 @@ function ProposalModal({
           </button>
           <button
             data-testid="button-proposal-create"
-            onClick={onCreateTasks}
+            onClick={() => onCreateTasks(editedTasks)}
             disabled={isCreating}
             className="px-4 py-2 text-sm rounded-lg bg-primary text-primary-foreground hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center gap-2"
           >
@@ -328,12 +424,12 @@ export default function ChatPage() {
     ]);
   }
 
-  async function handleCreateTasks() {
+  async function handleCreateTasks(editedTasks: ProposedTaskDraft[]) {
     if (!pendingProposal || isCreatingTasks) return;
     setIsCreatingTasks(true);
     try {
       const res = await apiRequest("POST", "/api/task-proposals/approve", {
-        tasks: pendingProposal.tasks,
+        tasks: editedTasks,
       });
       const data = await res.json();
       setPendingProposal(null);
