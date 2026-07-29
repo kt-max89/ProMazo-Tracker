@@ -10,7 +10,7 @@ import { useAuth } from "@/lib/auth";
 import {
   Plus, Loader2, Pencil, FolderOpen, Sun, Moon, LogOut,
   Zap, BookOpen, Settings, PanelLeft, CalendarDays, AlignLeft, ExternalLink,
-  Flag, Trash2, Check, X, AlertTriangle
+  Flag, Trash2, Check, X, AlertTriangle, Search
 } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
@@ -25,6 +25,7 @@ import {
 import type { Project, Task, Milestone } from "@shared/schema";
 import { AppSidebar } from "@/components/app-sidebar";
 import { TaskFormDialog } from "@/components/task-form-dialog";
+import { SearchBar } from "@/components/search-bar";
 
 // ─── Project form ─────────────────────────────────────────────────────────────
 
@@ -492,6 +493,7 @@ export default function ProjectsPage() {
   const [taskFormOpen, setTaskFormOpen] = useState(false);
   const [taskFormProjectId, setTaskFormProjectId] = useState<number | null>(null);
   const [editTask, setEditTask] = useState<Task | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
 
   const { data: projects = [], isLoading: projectsLoading } = useQuery<Project[]>({
     queryKey: ["/api/projects"],
@@ -500,6 +502,23 @@ export default function ProjectsPage() {
   const { data: allTasks = [] } = useQuery<Task[]>({
     queryKey: ["/api/tasks"],
   });
+
+  // Search filtering: match on project name OR any task title within that project
+  const searchLower = searchQuery.trim().toLowerCase();
+  const visibleProjects = searchLower
+    ? projects.filter(p => {
+        if (p.name.toLowerCase().includes(searchLower)) return true;
+        return allTasks.some(
+          t => t.projectId === p.id && !t.isArchived && t.title.toLowerCase().includes(searchLower),
+        );
+      })
+    : projects;
+
+  // Suggestions: project names + task titles (deduplicated, sorted)
+  const searchSuggestions = [
+    ...projects.map(p => p.name),
+    ...allTasks.filter(t => !t.isArchived).map(t => t.title),
+  ];
 
   function openAddTask(projectId: number) {
     setTaskFormProjectId(projectId);
@@ -571,6 +590,14 @@ export default function ProjectsPage() {
             <Plus className="w-4 h-4" />
             New project
           </Button>
+          <SearchBar
+            data-testid="input-project-search"
+            value={searchQuery}
+            onChange={setSearchQuery}
+            suggestions={searchSuggestions}
+            placeholder="Search projects & tasks…"
+            widthClass="w-64 ml-auto"
+          />
         </div>
 
         <div className="flex-1 overflow-auto p-6">
@@ -578,14 +605,16 @@ export default function ProjectsPage() {
             <div className="flex items-center justify-center h-40">
               <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
             </div>
-          ) : projects.length === 0 ? (
+          ) : visibleProjects.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-40 gap-3 text-muted-foreground">
               <FolderOpen className="w-10 h-10 opacity-30" />
-              <p className="text-sm">No projects yet. Create one to get started.</p>
+              <p className="text-sm">
+                {searchQuery ? `No projects match "${searchQuery}"` : "No projects yet. Create one to get started."}
+              </p>
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-              {projects.map(project => (
+              {visibleProjects.map(project => (
                 <ProjectCard
                   key={project.id}
                   project={project}

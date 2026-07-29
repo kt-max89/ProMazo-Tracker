@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/select";
 import type { Task, Project, Milestone } from "@shared/schema";
 import { AppSidebar } from "@/components/app-sidebar";
+import { SearchBar } from "@/components/search-bar";
 import { TaskCard } from "@/components/task-card";
 import { TaskDetailPanel } from "@/components/task-detail-panel";
 import { STATUSES } from "@/lib/task-status-meta";
@@ -243,26 +244,16 @@ export default function MyTasksPage() {
           </Select>
 
           {/* Search */}
-          <div className="relative ml-auto">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
-            <input
-              data-testid="input-task-search"
-              type="text"
-              placeholder="Search tasks…"
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-              className="h-8 pl-8 pr-7 text-sm rounded-md border border-input bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring w-52"
-            />
-            {searchQuery && (
-              <button
-                onClick={() => setSearchQuery("")}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-                aria-label="Clear search"
-              >
-                <XIcon className="w-3.5 h-3.5" />
-              </button>
-            )}
-          </div>
+          <SearchBar
+            data-testid="input-task-search"
+            value={searchQuery}
+            onChange={setSearchQuery}
+            suggestions={tasks
+              .filter(t => !t.isArchived && !isNaN(numericFilterId) && t.assigneeIds.includes(numericFilterId))
+              .map(t => t.title)}
+            placeholder="Search tasks…"
+            widthClass="w-56 ml-auto"
+          />
 
           {!isLoading && (
             <span className="text-sm text-muted-foreground shrink-0">
