@@ -288,7 +288,7 @@ export class DatabaseStorage implements IStorage {
       similarity: cosineSimilarity(embedding, r.embedding as number[]),
     }));
     scored.sort((a, b) => b.similarity - a.similarity);
-    return scored.slice(0, limit);
+    return scored.filter((r) => r.similarity >= 0.25).slice(0, limit);
   }
 
   // ── Citations ──────────────────────────────────────────────────────────────
