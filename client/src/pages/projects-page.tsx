@@ -22,10 +22,15 @@ import {
 import {
   Form, FormControl, FormField, FormItem, FormLabel, FormMessage
 } from "@/components/ui/form";
-import type { Project, Task, Milestone } from "@shared/schema";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
+import type { Project, Task, Milestone, Sprint, TrackerSettings } from "@shared/schema";
 import { AppSidebar } from "@/components/app-sidebar";
 import { TaskFormDialog } from "@/components/task-form-dialog";
 import { SearchBar } from "@/components/search-bar";
+import { SprintFilterSelect } from "@/components/sprint-filter-select";
+import { taskMatchesSprint, type SprintFilterValue } from "@/lib/sprints";
 
 // ─── Project form ─────────────────────────────────────────────────────────────
 
@@ -384,12 +389,14 @@ function MilestoneManager({ project }: { project: Project }) {
 function ProjectCard({
   project,
   tasks,
+  sprints,
   onEdit,
   onAddTask,
   onEditTask,
 }: {
   project: Project;
   tasks: Task[];
+  sprints: Sprint[];
   onEdit: () => void;
   onAddTask: () => void;
   onEditTask: (task: Task) => void;
@@ -461,6 +468,11 @@ function ProjectCard({
             >
               {task.isBlocked && <AlertTriangle className="w-3.5 h-3.5 text-red-600 dark:text-red-500 shrink-0" />}
               <span className="text-sm truncate flex-1">{task.title}</span>
+              {task.sprintId != null && (
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-fuchsia-100 text-fuchsia-700 dark:bg-fuchsia-900/40 dark:text-fuchsia-300 font-medium shrink-0">
+                  Sprint {sprints.find(sprint => sprint.id === task.sprintId)?.number ?? ""}
+                </span>
+              )}
               <span
                 className={`text-xs px-2 py-0.5 rounded-full font-medium shrink-0 ${STATUS_COLORS[task.status] ?? ""}`}
               >
@@ -494,6 +506,8 @@ export default function ProjectsPage() {
   const [taskFormProjectId, setTaskFormProjectId] = useState<number | null>(null);
   const [editTask, setEditTask] = useState<Task | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [sprintFilter, setSprintFilter] = useState<SprintFilterValue>("current");
+  const { toast } = useToast();
 
   const { data: projects = [], isLoading: projectsLoading } = useQuery<Project[]>({
     queryKey: ["/api/projects"],
@@ -502,22 +516,47 @@ export default function ProjectsPage() {
   const { data: allTasks = [] } = useQuery<Task[]>({
     queryKey: ["/api/tasks"],
   });
+  const { data: sprints = [] } = useQuery<Sprint[]>({
+    queryKey: ["/api/sprints"],
+  });
+  const { data: sprintSettings } = useQuery<TrackerSettings>({
+    queryKey: ["/api/sprint-settings"],
+    refetchInterval: 30_000,
+  });
 
-  // Search filtering: match on project name OR any task title within that project
+  const createNextSprintMutation = useMutation({
+    mutationFn: () => apiRequest("POST", "/api/sprints/next").then(r => r.json()),
+    onSuccess: (sprint: Sprint) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/sprints"] });
+      toast({ title: `Sprint ${sprint.number} added` });
+    },
+    onError: (err: any) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const sprintFilteredTasks = allTasks.filter(t =>
+    taskMatchesSprint(t, sprintFilter, sprintSettings?.currentSprintId),
+  );
+  const projectsInSprint = sprintFilter === "all"
+    ? projects
+    : projects.filter(project => sprintFilteredTasks.some(task => task.projectId === project.id));
+
+  // Search filtering: match on a project name OR a task title in the selected sprint view.
   const searchLower = searchQuery.trim().toLowerCase();
   const visibleProjects = searchLower
-    ? projects.filter(p => {
+    ? projectsInSprint.filter(p => {
         if (p.name.toLowerCase().includes(searchLower)) return true;
-        return allTasks.some(
-          t => t.projectId === p.id && !t.isArchived && t.title.toLowerCase().includes(searchLower),
+        return sprintFilteredTasks.some(
+          t => t.projectId === p.id && t.title.toLowerCase().includes(searchLower),
         );
       })
-    : projects;
+    : projectsInSprint;
 
-  // Suggestions: project names + task titles (deduplicated, sorted)
+  // Suggestions are scoped to the selected sprint view.
   const searchSuggestions = [
-    ...projects.map(p => p.name),
-    ...allTasks.filter(t => !t.isArchived).map(t => t.title),
+    ...projectsInSprint.map(p => p.name),
+    ...sprintFilteredTasks.map(t => t.title),
   ];
 
   function openAddTask(projectId: number) {
@@ -585,10 +624,29 @@ export default function ProjectsPage() {
           </div>
         </header>
 
-        <div className="px-6 py-3 border-b flex items-center gap-3 shrink-0">
+        <div className="px-6 py-3 border-b flex items-center gap-3 shrink-0 flex-wrap">
           <Button size="sm" className="gap-2" onClick={() => setProjectFormOpen(true)}>
             <Plus className="w-4 h-4" />
             New project
+          </Button>
+          <SprintFilterSelect
+            value={sprintFilter}
+            onValueChange={setSprintFilter}
+            sprints={sprints}
+            testId="select-sprint-filter"
+          />
+          <Button
+            size="sm"
+            variant="outline"
+            className="gap-1.5"
+            onClick={() => createNextSprintMutation.mutate()}
+            disabled={createNextSprintMutation.isPending}
+            data-testid="button-add-next-sprint"
+          >
+            {createNextSprintMutation.isPending
+              ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              : <Plus className="w-3.5 h-3.5" />}
+            Add Sprint {(sprints[sprints.length - 1]?.number ?? 67) + 1}
           </Button>
           <SearchBar
             data-testid="input-project-search"
@@ -609,7 +667,11 @@ export default function ProjectsPage() {
             <div className="flex flex-col items-center justify-center h-40 gap-3 text-muted-foreground">
               <FolderOpen className="w-10 h-10 opacity-30" />
               <p className="text-sm">
-                {searchQuery ? `No projects match "${searchQuery}"` : "No projects yet. Create one to get started."}
+                {searchQuery
+                  ? `No projects match "${searchQuery}" in this sprint view.`
+                  : sprintFilter !== "all"
+                    ? "No projects have tasks in this sprint view."
+                    : "No projects yet. Create one to get started."}
               </p>
             </div>
           ) : (
@@ -618,7 +680,8 @@ export default function ProjectsPage() {
                 <ProjectCard
                   key={project.id}
                   project={project}
-                  tasks={allTasks.filter(t => t.projectId === project.id && !t.isArchived)}
+                  tasks={sprintFilteredTasks.filter(t => t.projectId === project.id)}
+                  sprints={sprints}
                   onEdit={() => setEditProject(project)}
                   onAddTask={() => openAddTask(project.id)}
                   onEditTask={task => setEditTask(task)}

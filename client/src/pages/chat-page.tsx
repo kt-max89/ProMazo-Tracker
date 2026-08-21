@@ -8,6 +8,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useTheme } from "@/components/theme-provider";
 import ReactMarkdown from "react-markdown";
 import { AppSidebar } from "@/components/app-sidebar";
+import type { Sprint, TrackerSettings } from "@shared/schema";
 
 type Citation = {
   documentId: number;
@@ -42,6 +43,7 @@ type ProposedTaskDraft = {
   milestoneName?: string;
   dueDate?: string;
   size?: string;
+  sprintId?: number | null;
 };
 
 type ValidatedProposal = {
@@ -74,15 +76,24 @@ function ProposalModal({
   const { data: users } = useQuery<any[]>({ queryKey: ["/api/users"] });
   const { data: projects } = useQuery<any[]>({ queryKey: ["/api/projects"] });
   const { data: allMilestones } = useQuery<any[]>({ queryKey: ["/api/milestones"] });
+  const { data: sprints = [] } = useQuery<Sprint[]>({ queryKey: ["/api/sprints"] });
+  const { data: sprintSettings } = useQuery<TrackerSettings>({ queryKey: ["/api/sprint-settings"] });
 
   const task = editedTasks[currentIndex];
   const total = editedTasks.length;
 
-  function updateCurrent(field: keyof ProposedTaskDraft, value: string) {
+  useEffect(() => {
+    if (sprintSettings?.currentSprintId == null) return;
+    setEditedTasks(prev => prev.map(task =>
+      task.sprintId === undefined ? { ...task, sprintId: sprintSettings.currentSprintId } : task,
+    ));
+  }, [sprintSettings?.currentSprintId]);
+
+  function updateCurrent(field: keyof ProposedTaskDraft, value: string | number | null) {
     setEditedTasks((prev) =>
       prev.map((t, i) => {
         if (i !== currentIndex) return t;
-        const updated = { ...t, [field]: value || undefined };
+        const updated = { ...t, [field]: value === "" ? undefined : value };
         if (field === "projectName") updated.milestoneName = undefined;
         return updated;
       })
@@ -219,8 +230,8 @@ function ProposalModal({
             </div>
           </div>
 
-          {/* Assigned To + Due Date + Size */}
-          <div className="grid grid-cols-3 gap-4">
+          {/* Assignment + planning fields */}
+          <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1.5">
               <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Assigned To</label>
               <select
@@ -246,6 +257,24 @@ function ProposalModal({
                 onChange={(e) => updateCurrent("dueDate", e.target.value)}
                 disabled={isCreating}
               />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Sprint</label>
+              <select
+                data-testid={`proposal-row-${currentIndex}-sprint`}
+                className={fieldClass}
+                value={task.sprintId ?? "backlog"}
+                onChange={(e) => updateCurrent(
+                  "sprintId",
+                  e.target.value === "backlog" ? null : Number(e.target.value),
+                )}
+                disabled={isCreating}
+              >
+                <option value="backlog">Backlog</option>
+                {sprints.map((sprint) => (
+                  <option key={sprint.id} value={sprint.id}>Sprint {sprint.number}</option>
+                ))}
+              </select>
             </div>
             <div className="space-y-1.5">
               <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Size</label>

@@ -10,6 +10,7 @@ import { listTasks, createTask, updateTask, archiveTask, restoreTask } from "./t
 import { listCommentsByTaskId, createComment } from "./commentService";
 import { listProjects, getProject, createProject, updateProject } from "./projectService";
 import { listMilestones, listMilestonesByProject, getMilestone, createMilestone, updateMilestone, deleteMilestone } from "./milestoneService";
+import { createNextSprint, getTrackerSettings, listSprints, setCurrentSprint } from "./sprintService";
 import { chunkText, hashChunk, getEmbedding, getEmbeddings } from "./openai";
 import { handleChatMessage } from "./chatOrchestrator";
 import { validateProposal } from "./proposalSchema";
@@ -536,6 +537,7 @@ export async function registerRoutes(
         milestoneId: number | undefined;
         dueDate: string | null;
         size: string | null;
+        sprintId: number | null | undefined;
       };
 
       const resolvedDrafts: ResolvedDraft[] = [];
@@ -594,7 +596,16 @@ export async function registerRoutes(
 
         const VALID_SIZES = ["XXS", "XS", "S", "M", "L", "XL", "XXL"];
         const size = draft.size && VALID_SIZES.includes(draft.size) ? draft.size : null;
-        resolvedDrafts.push({ title: draft.title, description: draft.description ?? null, assigneeIds, projectId, milestoneId, dueDate, size });
+        resolvedDrafts.push({
+          title: draft.title,
+          description: draft.description ?? null,
+          assigneeIds,
+          projectId,
+          milestoneId,
+          dueDate,
+          size,
+          sprintId: draft.sprintId,
+        });
       }
 
       let created = 0;
@@ -609,6 +620,7 @@ export async function registerRoutes(
           milestoneId: resolved.milestoneId,
           dueDate: resolved.dueDate,
           size: resolved.size,
+          sprintId: resolved.sprintId,
         });
         created++;
       }
@@ -619,6 +631,42 @@ export async function registerRoutes(
   });
 
   // Project routes
+  app.get("/api/sprints", requireAuth, async (_req, res) => {
+    try {
+      return res.json(await listSprints());
+    } catch (err: any) {
+      return res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/sprints/next", requireAuth, async (_req, res) => {
+    try {
+      return res.json(await createNextSprint());
+    } catch (err: any) {
+      return res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/sprint-settings", requireAuth, async (_req, res) => {
+    try {
+      return res.json(await getTrackerSettings());
+    } catch (err: any) {
+      return res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.patch("/api/sprint-settings/current", requireAuth, async (req, res) => {
+    try {
+      const sprintId = Number(req.body?.sprintId);
+      if (!Number.isInteger(sprintId) || sprintId < 1) {
+        return res.status(400).json({ message: "A valid sprint is required" });
+      }
+      return res.json(await setCurrentSprint(sprintId));
+    } catch (err: any) {
+      return res.status(400).json({ message: err.message });
+    }
+  });
+
   app.get("/api/projects", requireAuth, async (req, res) => {
     try {
       return res.json(await listProjects());

@@ -4,6 +4,7 @@ import { tasksTable, taskAssigneesTable } from "./schema";
 import type { Task, InsertTask } from "@shared/schema";
 import { getProject } from "./projectService";
 import { getMilestone } from "./milestoneService";
+import { getSprint, getTrackerSettings } from "./sprintService";
 
 export type TaskFilters = { archived?: boolean };
 
@@ -35,6 +36,7 @@ function mapTask(row: typeof tasksTable.$inferSelect, assigneeIds: number[] = []
     assigneeIds,
     projectId: row.projectId,
     milestoneId: row.milestoneId ?? null,
+    sprintId: row.sprintId ?? null,
   };
 }
 
@@ -101,6 +103,12 @@ export async function createTask(input: InsertTask): Promise<Task> {
     const proj = await getProject(input.projectId);
     if (!proj) throw new Error("Project not found");
   }
+  const sprintId = input.sprintId === undefined
+    ? (await getTrackerSettings()).currentSprintId
+    : input.sprintId;
+  if (sprintId != null && !(await getSprint(sprintId))) {
+    throw new Error("Sprint not found");
+  }
 
   // Milestone validation
   if (input.projectId != null && input.milestoneId == null) {
@@ -128,6 +136,7 @@ export async function createTask(input: InsertTask): Promise<Task> {
       dueDate: input.dueDate ?? null,
       projectId: input.projectId ?? null,
       milestoneId: input.milestoneId ?? null,
+      sprintId,
     })
     .returning();
 
@@ -163,6 +172,9 @@ export async function updateTask(id: number, input: Partial<InsertTask>): Promis
   if (input.projectId != null) {
     const proj = await getProject(input.projectId);
     if (!proj) throw new Error("Project not found");
+  }
+  if (input.sprintId != null && !(await getSprint(input.sprintId))) {
+    throw new Error("Sprint not found");
   }
 
   // Only validate milestone consistency when projectId or milestoneId is being explicitly changed
@@ -201,6 +213,7 @@ export async function updateTask(id: number, input: Partial<InsertTask>): Promis
   if (input.dueDate !== undefined) set.dueDate = input.dueDate;
   if (input.projectId !== undefined) set.projectId = input.projectId;
   if (input.milestoneId !== undefined) set.milestoneId = input.milestoneId;
+  if (input.sprintId !== undefined) set.sprintId = input.sprintId;
 
   const [updated] = await db
     .update(tasksTable)

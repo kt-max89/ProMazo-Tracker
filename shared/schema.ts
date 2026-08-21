@@ -105,6 +105,16 @@ export type InsertMilestone = {
 
 export type UpdateMilestone = Partial<Omit<InsertMilestone, "projectId">>;
 
+export type Sprint = {
+  id: number;
+  number: number;
+  createdAt: string;
+};
+
+export type TrackerSettings = {
+  currentSprintId: number | null;
+};
+
 export type Task = {
   id: number;
   title: string;
@@ -122,6 +132,7 @@ export type Task = {
   assigneeIds: number[];
   projectId: number | null;
   milestoneId: number | null;
+  sprintId: number | null;
 };
 
 export type InsertTask = {
@@ -136,6 +147,7 @@ export type InsertTask = {
   assigneeIds?: number[];
   projectId?: number | null;
   milestoneId?: number | null;
+  sprintId?: number | null;
 };
 
 export type UpdateTask = Partial<Omit<InsertTask, "createdBy">>;
@@ -182,6 +194,7 @@ export const insertTaskSchema = z.object({
   assigneeIds: z.array(z.number()).optional(),
   projectId: z.number().nullable().optional(),
   milestoneId: z.number().nullable().optional(),
+  sprintId: z.number().nullable().optional(),
 });
 
 export const updateTaskSchema = insertTaskSchema.partial().omit({ createdBy: true });

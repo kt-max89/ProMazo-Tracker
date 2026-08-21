@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useForm } from "react-hook-form";
@@ -21,7 +21,7 @@ import {
 } from "@/components/ui/form";
 import ReactMarkdown from "react-markdown";
 import { MultiUserSelect } from "@/components/multi-user-select";
-import type { Task, Project, Milestone } from "@shared/schema";
+import type { Task, Project, Milestone, Sprint, TrackerSettings } from "@shared/schema";
 
 type AppUser = { id: number; displayName: string; email: string };
 
@@ -47,6 +47,7 @@ const taskFormSchema = z.object({
   assigneeIds: z.array(z.number()).optional(),
   projectId: z.number({ required_error: "Project is required" }).nullable(),
   milestoneId: z.number().nullable().optional(),
+  sprintId: z.number().nullable().optional(),
 }).refine(data => {
   if (data.isBlocked && !data.blockedReason?.trim()) return false;
   return true;
@@ -78,6 +79,9 @@ export function TaskFormDialog({
 
   const { data: users = [] } = useQuery<AppUser[]>({ queryKey: ["/api/users"] });
   const { data: projects = [] } = useQuery<Project[]>({ queryKey: ["/api/projects"] });
+  const { data: sprints = [] } = useQuery<Sprint[]>({ queryKey: ["/api/sprints"] });
+  const { data: sprintSettings } = useQuery<TrackerSettings>({ queryKey: ["/api/sprint-settings"] });
+  const defaultSprintApplied = useRef(false);
 
   const form = useForm<TaskFormValues>({
     resolver: zodResolver(taskFormSchema),
@@ -92,12 +96,22 @@ export function TaskFormDialog({
       assigneeIds: task?.assigneeIds ?? [],
       projectId: task?.projectId ?? defaultProjectId ?? null,
       milestoneId: task?.milestoneId ?? null,
+      sprintId: task?.sprintId ?? null,
     },
   });
 
   const watchIsBlocked = form.watch("isBlocked");
   const watchProjectId = form.watch("projectId");
   const [descEditing, setDescEditing] = useState(!task?.description);
+
+  // New tasks start in the shared current sprint; users can explicitly choose
+  // Backlog before saving. Existing tasks always retain their own assignment.
+  useEffect(() => {
+    if (!task && !defaultSprintApplied.current && sprintSettings?.currentSprintId != null) {
+      form.setValue("sprintId", sprintSettings.currentSprintId, { shouldDirty: false });
+      defaultSprintApplied.current = true;
+    }
+  }, [task, sprintSettings?.currentSprintId, form]);
 
   // Fetch milestones for the selected project
   const { data: milestones = [] } = useQuery<Milestone[]>({
@@ -252,6 +266,35 @@ export function TaskFormDialog({
                 )}
               />
             )}
+
+            <FormField
+              control={form.control}
+              name="sprintId"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Sprint <span className="text-muted-foreground text-xs font-normal">(optional)</span></FormLabel>
+                  <Select
+                    onValueChange={v => field.onChange(v === "backlog" ? null : parseInt(v))}
+                    value={field.value != null ? String(field.value) : "backlog"}
+                  >
+                    <FormControl>
+                      <SelectTrigger data-testid="select-task-sprint">
+                        <SelectValue placeholder="Backlog" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      <SelectItem value="backlog">Backlog</SelectItem>
+                      {sprints.map(sprint => (
+                        <SelectItem key={sprint.id} value={String(sprint.id)}>
+                          Sprint {sprint.number}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
 
             <FormField
               control={form.control}

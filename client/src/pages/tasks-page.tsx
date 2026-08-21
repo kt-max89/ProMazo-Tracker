@@ -7,19 +7,21 @@ import { useTheme } from "@/components/theme-provider";
 import {
   Plus, Loader2, AlertCircle, CheckCircle2, Clock, AlertTriangle,
   RotateCcw, Sun, Moon, LogOut, Zap,
-  Settings, BookOpen, PanelLeft, Flag, Search, X as XIcon
+  Settings, BookOpen, PanelLeft, Flag
 } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue
 } from "@/components/ui/select";
-import type { Task, Project, Milestone } from "@shared/schema";
+import type { Task, Project, Milestone, Sprint, TrackerSettings } from "@shared/schema";
 import { AppSidebar } from "@/components/app-sidebar";
 import { TaskFormDialog } from "@/components/task-form-dialog";
 import { TaskDetailPanel } from "@/components/task-detail-panel";
 import { SearchBar } from "@/components/search-bar";
 import { TaskCard } from "@/components/task-card";
+import { SprintFilterSelect } from "@/components/sprint-filter-select";
+import { taskMatchesSprint, type SprintFilterValue } from "@/lib/sprints";
 
 type AppUser = { id: number; displayName: string; email: string };
 
@@ -121,6 +123,7 @@ export default function TasksPage() {
   const [dragOverColumn, setDragOverColumn] = useState<string | null>(null);
   const [projectFilter, setProjectFilter] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
+  const [sprintFilter, setSprintFilter] = useState<SprintFilterValue>("current");
 
   const { data: tasks = [], isLoading } = useQuery<Task[]>({
     queryKey: showArchived ? ["/api/tasks", "archived"] : ["/api/tasks"],
@@ -136,6 +139,13 @@ export default function TasksPage() {
 
   const { data: milestones = [] } = useQuery<Milestone[]>({
     queryKey: ["/api/milestones"],
+  });
+  const { data: sprints = [] } = useQuery<Sprint[]>({
+    queryKey: ["/api/sprints"],
+  });
+  const { data: sprintSettings } = useQuery<TrackerSettings>({
+    queryKey: ["/api/sprint-settings"],
+    refetchInterval: 30_000,
   });
 
   const restoreMutation = useMutation({
@@ -161,6 +171,18 @@ export default function TasksPage() {
     },
   });
 
+  const currentSprintMutation = useMutation({
+    mutationFn: (sprintId: number) =>
+      apiRequest("PATCH", "/api/sprint-settings/current", { sprintId }).then(r => r.json()),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/sprint-settings"] });
+      toast({ title: "Current sprint updated" });
+    },
+    onError: (err: any) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+  });
+
   function handleDrop(taskId: number, newStatus: string) {
     const task = tasks.find(t => t.id === taskId);
     if (!task || task.status === newStatus) return;
@@ -170,11 +192,14 @@ export default function TasksPage() {
   const projectFilteredTasks = projectFilter === "all"
     ? tasks
     : tasks.filter(t => t.projectId === parseInt(projectFilter));
+  const sprintAndProjectFilteredTasks = projectFilteredTasks.filter(t =>
+    taskMatchesSprint(t, sprintFilter, sprintSettings?.currentSprintId),
+  );
 
   const searchLower = searchQuery.trim().toLowerCase();
   const filteredTasks = searchLower
-    ? projectFilteredTasks.filter(t => t.title.toLowerCase().includes(searchLower))
-    : projectFilteredTasks;
+    ? sprintAndProjectFilteredTasks.filter(t => t.title.toLowerCase().includes(searchLower))
+    : sprintAndProjectFilteredTasks;
 
   const byStatus = (status: string) => filteredTasks.filter(t => t.status === status);
 
@@ -261,6 +286,41 @@ export default function TasksPage() {
               Archived
             </button>
           </div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-medium text-muted-foreground whitespace-nowrap">Current</span>
+            <Select
+              value={sprintSettings?.currentSprintId != null ? String(sprintSettings.currentSprintId) : undefined}
+              onValueChange={(value) => {
+                const sprintId = parseInt(value);
+                const sprint = sprints.find(item => item.id === sprintId);
+                if (!sprint || sprintId === sprintSettings?.currentSprintId) return;
+                if (window.confirm(`Set Sprint ${sprint.number} as the current sprint for everyone?`)) {
+                  currentSprintMutation.mutate(sprintId);
+                }
+              }}
+            >
+              <SelectTrigger
+                data-testid="select-current-sprint"
+                className="h-8 text-sm w-36"
+                disabled={currentSprintMutation.isPending || sprints.length === 0}
+              >
+                <SelectValue placeholder="Current sprint" />
+              </SelectTrigger>
+              <SelectContent>
+                {sprints.map(sprint => (
+                  <SelectItem key={sprint.id} value={String(sprint.id)}>
+                    Sprint {sprint.number}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <SprintFilterSelect
+            value={sprintFilter}
+            onValueChange={setSprintFilter}
+            sprints={sprints}
+            testId="select-sprint-filter"
+          />
           {/* Project filter */}
           {projects.length > 0 && (
             <Select value={projectFilter} onValueChange={setProjectFilter}>
@@ -284,7 +344,7 @@ export default function TasksPage() {
             data-testid="input-task-search"
             value={searchQuery}
             onChange={setSearchQuery}
-            suggestions={projectFilteredTasks.map(t => t.title)}
+            suggestions={sprintAndProjectFilteredTasks.map(t => t.title)}
             placeholder="Search tasks…"
             widthClass="w-56 ml-auto"
           />
@@ -361,6 +421,7 @@ export default function TasksPage() {
                               task={task}
                               users={users}
                               milestones={milestones}
+                               sprints={sprints}
                               onClick={() => setEditTask(task)}
                               onDragStart={e => {
                                 e.dataTransfer.setData("taskId", String(task.id));

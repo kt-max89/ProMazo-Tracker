@@ -6,19 +6,21 @@ import { useToast } from "@/hooks/use-toast";
 import { useTheme } from "@/components/theme-provider";
 import {
   Loader2, Sun, Moon, LogOut, Zap, Settings, BookOpen, PanelLeft,
-  UserCheck, AlertTriangle, RotateCcw, Search, X as XIcon,
+  UserCheck, AlertTriangle, RotateCcw,
 } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import type { Task, Project, Milestone } from "@shared/schema";
+import type { Task, Project, Milestone, Sprint, TrackerSettings } from "@shared/schema";
 import { AppSidebar } from "@/components/app-sidebar";
 import { SearchBar } from "@/components/search-bar";
 import { TaskCard } from "@/components/task-card";
 import { TaskDetailPanel } from "@/components/task-detail-panel";
 import { STATUSES } from "@/lib/task-status-meta";
+import { SprintFilterSelect } from "@/components/sprint-filter-select";
+import { taskMatchesSprint, type SprintFilterValue } from "@/lib/sprints";
 
 type AppUser = { id: number; displayName: string; email: string };
 
@@ -111,6 +113,7 @@ export default function MyTasksPage() {
   const [dragOverColumn, setDragOverColumn] = useState<string | null>(null);
   const [filterUserId, setFilterUserId] = useState<string>(String(user?.id ?? ""));
   const [searchQuery, setSearchQuery] = useState("");
+  const [sprintFilter, setSprintFilter] = useState<SprintFilterValue>("current");
 
   const { data: tasks = [], isLoading } = useQuery<Task[]>({
     queryKey: ["/api/tasks"],
@@ -123,6 +126,13 @@ export default function MyTasksPage() {
   });
   const { data: milestones = [] } = useQuery<Milestone[]>({
     queryKey: ["/api/milestones"],
+  });
+  const { data: sprints = [] } = useQuery<Sprint[]>({
+    queryKey: ["/api/sprints"],
+  });
+  const { data: sprintSettings } = useQuery<TrackerSettings>({
+    queryKey: ["/api/sprint-settings"],
+    refetchInterval: 30_000,
   });
 
   const changeStatusMutation = useMutation({
@@ -146,6 +156,7 @@ export default function MyTasksPage() {
   const viewTasks = tasks.filter(t => {
     if (t.isArchived) return false;
     if (isNaN(numericFilterId) || !t.assigneeIds.includes(numericFilterId)) return false;
+    if (!taskMatchesSprint(t, sprintFilter, sprintSettings?.currentSprintId)) return false;
     if (searchLower && !t.title.toLowerCase().includes(searchLower)) return false;
     return true;
   });
@@ -242,6 +253,12 @@ export default function MyTasksPage() {
                 ))}
             </SelectContent>
           </Select>
+          <SprintFilterSelect
+            value={sprintFilter}
+            onValueChange={setSprintFilter}
+            sprints={sprints}
+            testId="select-sprint-filter"
+          />
 
           {/* Search */}
           <SearchBar
@@ -249,7 +266,12 @@ export default function MyTasksPage() {
             value={searchQuery}
             onChange={setSearchQuery}
             suggestions={tasks
-              .filter(t => !t.isArchived && !isNaN(numericFilterId) && t.assigneeIds.includes(numericFilterId))
+              .filter(t =>
+                !t.isArchived &&
+                !isNaN(numericFilterId) &&
+                t.assigneeIds.includes(numericFilterId) &&
+                taskMatchesSprint(t, sprintFilter, sprintSettings?.currentSprintId),
+              )
               .map(t => t.title)}
             placeholder="Search tasks…"
             widthClass="w-56 ml-auto"
@@ -334,6 +356,7 @@ export default function MyTasksPage() {
                                     users={users}
                                     milestones={milestones}
                                     projects={projects}
+                                     sprints={sprints}
                                     onClick={() => setEditTask(task)}
                                     onDragStart={e => {
                                       e.dataTransfer.setData("taskId", String(task.id));

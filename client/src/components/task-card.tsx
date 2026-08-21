@@ -1,5 +1,5 @@
 import { AlertTriangle, Ban, Flag, Pencil, UserCircle2, Calendar, Folder } from "lucide-react";
-import type { Task, Milestone, Project } from "@shared/schema";
+import type { Task, Milestone, Project, Sprint } from "@shared/schema";
 
 type AppUser = { id: number; displayName: string; email: string };
 
@@ -57,6 +57,8 @@ interface TaskCardProps {
   milestones: Milestone[];
   /** When provided, a colored project badge is shown on the card. */
   projects?: Project[];
+  /** When provided, the task's sprint is shown as a badge. */
+  sprints?: Sprint[];
   onClick: () => void;
   onDragStart?: (e: React.DragEvent) => void;
   onDragEnd?: () => void;
@@ -67,6 +69,7 @@ export function TaskCard({
   users,
   milestones,
   projects,
+  sprints,
   onClick,
   onDragStart,
   onDragEnd,
@@ -75,6 +78,9 @@ export function TaskCard({
   const milestone = task.milestoneId != null ? milestones.find(m => m.id === task.milestoneId) : null;
   const project   = (projects && task.projectId != null)
     ? projects.find(p => p.id === task.projectId)
+    : null;
+  const sprint = (sprints && task.sprintId != null)
+    ? sprints.find(s => s.id === task.sprintId)
     : null;
   const overdue   = isTaskOverdue(task);
   const draggable = !!onDragStart;
@@ -112,8 +118,8 @@ export function TaskCard({
         <Pencil className="w-3.5 h-3.5 text-muted-foreground opacity-0 group-hover:opacity-60 shrink-0 mt-0.5" />
       </div>
 
-      {/* Badges: project · milestone · size */}
-      {(project || milestone || task.size) && (
+      {/* Badges: project · milestone · sprint · size */}
+      {(project || milestone || sprint || task.size) && (
         <div className="flex items-center gap-1 mt-2 flex-wrap">
           {project && (
             <span
@@ -131,6 +137,14 @@ export function TaskCard({
             >
               <Flag className="w-2.5 h-2.5 shrink-0" />
               <span className="truncate">{milestone.name}</span>
+            </span>
+          )}
+          {sprint && (
+            <span
+              className="inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded bg-fuchsia-100 text-fuchsia-700 dark:bg-fuchsia-900/40 dark:text-fuchsia-300 font-medium"
+              data-testid={`badge-sprint-${task.id}`}
+            >
+              Sprint {sprint.number}
             </span>
           )}
           {task.size && (

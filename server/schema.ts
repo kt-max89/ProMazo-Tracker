@@ -134,6 +134,28 @@ export const milestonesTable = pgTable("milestones", {
     .defaultNow(),
 });
 
+// ─── Sprints ─────────────────────────────────────────────────────────────────
+
+export const sprintsTable = pgTable("sprints", {
+  id: serial("id").primaryKey(),
+  number: integer("number").notNull().unique(),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+/**
+ * A one-row table for tracker-wide settings. `id` is always 1; storing the
+ * current sprint here makes it shared by every signed-in user.
+ */
+export const trackerSettingsTable = pgTable("tracker_settings", {
+  id: integer("id").primaryKey(),
+  currentSprintId: integer("current_sprint_id").references(() => sprintsTable.id),
+  sprint68BackfillCompleted: boolean("sprint_68_backfill_completed")
+    .notNull()
+    .default(false),
+});
+
 // ─── Tasks ────────────────────────────────────────────────────────────────────
 
 export const tasksTable = pgTable("tasks", {
@@ -156,6 +178,7 @@ export const tasksTable = pgTable("tasks", {
   dueDate: date("due_date"),
   projectId: integer("project_id").references(() => projectsTable.id),
   milestoneId: integer("milestone_id").references(() => milestonesTable.id),
+  sprintId: integer("sprint_id").references(() => sprintsTable.id),
 });
 
 // ─── Task assignees (many-to-many) ─────────────────────────────────────────────

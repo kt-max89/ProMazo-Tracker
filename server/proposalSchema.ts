@@ -11,6 +11,7 @@ const proposedTaskDraftSchema = z.object({
   milestoneName: z.string().optional(),
   dueDate: z.string().optional(),
   size: z.enum(VALID_SIZES).optional(),
+  sprintId: z.number().nullable().optional(),
 });
 
 export type ProposedTaskDraft = z.infer<typeof proposedTaskDraftSchema>;
@@ -43,6 +44,7 @@ export function validateProposal(raw: unknown): ValidatedProposal | null {
         milestoneName: parsed.data.milestoneName?.trim() || undefined,
         dueDate: parsed.data.dueDate?.trim() || undefined,
         size: parsed.data.size || undefined,
+        sprintId: parsed.data.sprintId,
       });
     }
   }
