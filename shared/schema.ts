@@ -218,6 +218,24 @@ export const insertTaskCommentSchema = z.object({
   body: z.string().min(1, "Comment cannot be empty"),
 });
 
+export type TeamPost = {
+  id: number;
+  authorId: number | null;
+  authorName: string | null;
+  body: string;
+  createdAt: string;
+  pinned: boolean;
+};
+
+export type InsertTeamPost = {
+  authorId: number;
+  body: string;
+};
+
+export const insertTeamPostSchema = z.object({
+  body: z.string().trim().min(1, "Post cannot be empty"),
+});
+
 export const insertDocumentSchema = z.object({
   title: z.string().min(1),
   filename: z.string().min(1),

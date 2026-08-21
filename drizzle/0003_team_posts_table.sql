@@ -1,0 +1,7 @@
+CREATE TABLE IF NOT EXISTS team_posts (
+  id SERIAL PRIMARY KEY,
+  author_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  body TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  pinned BOOLEAN NOT NULL DEFAULT false
+);

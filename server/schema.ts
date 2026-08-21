@@ -205,3 +205,15 @@ export const taskCommentsTable = pgTable("task_comments", {
     .notNull()
     .defaultNow(),
 });
+
+// ─── Team posts ───────────────────────────────────────────────────────────────
+
+export const teamPostsTable = pgTable("team_posts", {
+  id: serial("id").primaryKey(),
+  authorId: integer("author_id").references(() => usersTable.id, { onDelete: "set null" }),
+  body: text("body").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  pinned: boolean("pinned").notNull().default(false),
+});

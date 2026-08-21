@@ -74,7 +74,25 @@ async function initializeSprints(): Promise<void> {
   `);
 }
 
+/**
+ * Creates the shared team post feed. The nullable author reference preserves
+ * posts when the author is deleted; the API joins the current display name
+ * when one is available and the UI supplies the deleted-author fallback.
+ */
+async function initializeTeamPosts(): Promise<void> {
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS team_posts (
+      id SERIAL PRIMARY KEY,
+      author_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      body TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      pinned BOOLEAN NOT NULL DEFAULT false
+    )
+  `);
+}
+
 export async function runMigrations(): Promise<void> {
   await clearDocumentAllowedUsers();
   await initializeSprints();
+  await initializeTeamPosts();
 }

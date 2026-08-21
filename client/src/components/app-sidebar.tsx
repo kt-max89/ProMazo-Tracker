@@ -1,7 +1,7 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Link, useLocation } from "wouter";
-import { Plus, Loader2, MessageSquare, Trash2, PanelLeftClose, LayoutList, FolderOpen, UserCheck } from "lucide-react";
+import { Plus, Loader2, MessageSquare, Trash2, PanelLeftClose, LayoutList, UsersRound, UserCheck } from "lucide-react";
 
 type ChatSession = {
   id: number;
@@ -14,7 +14,7 @@ type ChatSession = {
 interface AppSidebarProps {
   open: boolean;
   onToggle: (open: boolean) => void;
-  activePage: "chat" | "tasks" | "projects" | "my-tasks";
+  activePage: "chat" | "tasks" | "team-overview" | "projects" | "my-tasks";
   activeSessionId?: number | null;
   onSelectSession?: (id: number) => void;
   onDeleteSession?: (e: React.MouseEvent, id: number) => void;
@@ -46,7 +46,7 @@ export function AppSidebar({
   if (!open) return null;
 
   function handleSessionClick(id: number) {
-    if (activePage === "tasks" || activePage === "projects") {
+    if (activePage === "tasks" || activePage === "team-overview" || activePage === "projects") {
       navigate("/");
     } else {
       onSelectSession?.(id);
@@ -63,7 +63,7 @@ export function AppSidebar({
   }
 
   function handleNewChat() {
-    if (activePage === "tasks" || activePage === "projects") {
+    if (activePage === "tasks" || activePage === "team-overview" || activePage === "projects") {
       navigate("/");
     } else {
       onNewChat?.();
@@ -88,17 +88,17 @@ export function AppSidebar({
                 See Tasks
               </button>
             </Link>
-            <Link href="/projects">
+            <Link href="/team-overview">
               <button
-                data-testid="link-sidebar-projects"
+                data-testid="link-sidebar-team-overview"
                 className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  activePage === "projects"
+                  activePage === "team-overview"
                     ? "bg-primary/10 text-primary"
                     : "hover:bg-muted text-foreground"
                 }`}
               >
-                <FolderOpen className="w-4 h-4" />
-                See Projects
+                <UsersRound className="w-4 h-4" />
+                Team Overview
               </button>
             </Link>
             <Link href="/my-tasks">
