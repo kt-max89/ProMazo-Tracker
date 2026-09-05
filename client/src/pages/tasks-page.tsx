@@ -7,7 +7,7 @@ import { useTheme } from "@/components/theme-provider";
 import {
   Plus, Loader2, AlertCircle, CheckCircle2, Clock, AlertTriangle,
   RotateCcw, Sun, Moon, LogOut, Zap,
-  Settings, BookOpen, PanelLeft, Flag
+  Settings, BookOpen, PanelLeft, Flag, Folder
 } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
@@ -19,7 +19,7 @@ import { AppSidebar } from "@/components/app-sidebar";
 import { TaskFormDialog } from "@/components/task-form-dialog";
 import { TaskDetailPanel } from "@/components/task-detail-panel";
 import { SearchBar } from "@/components/search-bar";
-import { TaskCard } from "@/components/task-card";
+import { TaskCard, getProjectColorClass } from "@/components/task-card";
 import { SprintFilterSelect } from "@/components/sprint-filter-select";
 import { taskMatchesSprint, type SprintFilterValue } from "@/lib/sprints";
 
@@ -71,9 +71,27 @@ function statusMeta(value: string) {
 }
 
 
-function ArchivedTaskCard({ task, onRestore }: { task: Task; onRestore: () => void }) {
+function ArchivedTaskCard({
+  task,
+  projects,
+  milestones,
+  onRestore,
+}: {
+  task: Task;
+  projects: Project[];
+  milestones: Milestone[];
+  onRestore: () => void;
+}) {
   const meta = statusMeta(task.status);
   const Icon = meta.icon;
+  const project = task.projectId == null
+    ? null
+    : projects.find(item => item.id === task.projectId);
+  const milestone = task.milestoneId == null
+    ? null
+    : milestones.find(item => item.id === task.milestoneId);
+  const projectClass = project ? getProjectColorClass(project.id, projects) : "";
+
   return (
     <div
       data-testid={`card-archived-task-${task.id}`}
@@ -94,7 +112,29 @@ function ArchivedTaskCard({ task, onRestore }: { task: Task; onRestore: () => vo
           Restore
         </Button>
       </div>
-      <div className="mt-2 flex items-center gap-1.5">
+      {(project || milestone) && (
+        <div className="mt-2 flex min-w-0 flex-wrap items-center gap-1">
+          {project && (
+            <span
+              className={`inline-flex max-w-full items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium ${projectClass}`}
+              data-testid={`badge-project-${task.id}`}
+            >
+              <Folder className="h-2.5 w-2.5 shrink-0" />
+              <span className="truncate">{project.name}</span>
+            </span>
+          )}
+          {milestone && (
+            <span
+              className="inline-flex max-w-full items-center gap-1 rounded bg-violet-100 px-1.5 py-0.5 text-xs font-medium text-violet-700 dark:bg-violet-900/40 dark:text-violet-300"
+              data-testid={`badge-milestone-${task.id}`}
+            >
+              <Flag className="h-2.5 w-2.5 shrink-0" />
+              <span className="truncate">{milestone.name}</span>
+            </span>
+          )}
+        </div>
+      )}
+      <div className="mt-2 flex flex-wrap items-center gap-1.5">
         <span className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium ${meta.badgeColor}`}>
           <Icon className="w-3 h-3" />
           {meta.label}
@@ -368,6 +408,8 @@ export default function TasksPage() {
                       <ArchivedTaskCard
                         key={task.id}
                         task={task}
+                        projects={projects}
+                        milestones={milestones}
                         onRestore={() => restoreMutation.mutate(task.id)}
                       />
                     ))}
@@ -421,7 +463,8 @@ export default function TasksPage() {
                               task={task}
                               users={users}
                               milestones={milestones}
-                               sprints={sprints}
+                              projects={projects}
+                              sprints={sprints}
                               onClick={() => setEditTask(task)}
                               onDragStart={e => {
                                 e.dataTransfer.setData("taskId", String(task.id));
