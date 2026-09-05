@@ -23,6 +23,14 @@ Prior task-agent merges (Tasks #1–#3) created several tables before this migra
 
 **Why:** Any future schema change must check whether the table already exists and what columns it actually has. Do not assume CREATE TABLE ran successfully.
 
+## Production check constraints
+
+Production can retain an older check-constraint definition even when development already accepts newer application values. Declare business-critical constraints in the Drizzle schema source and let Replit's Publish flow reconcile development and production.
+
+**Why:** A production-only status constraint still allowed the removed `blocked` value and rejected `needs_review`, while the application and development database used the current status set.
+
+**How to apply:** When a value works in development but a production write fails with a check-constraint error, compare the constraint definitions. Fix the declarative schema and re-publish; never add startup DDL or directly mutate production.
+
 ## Delete semantics
 
 - `DatabaseStorage.deleteDocument()` explicitly deletes chunks then document (not relying on CASCADE)

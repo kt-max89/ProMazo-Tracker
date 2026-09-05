@@ -12,7 +12,9 @@ import {
   timestamp,
   date,
   jsonb,
+  check,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 
 // ─── Users ───────────────────────────────────────────────────────────────────
 
@@ -158,28 +160,37 @@ export const trackerSettingsTable = pgTable("tracker_settings", {
 
 // ─── Tasks ────────────────────────────────────────────────────────────────────
 
-export const tasksTable = pgTable("tasks", {
-  id: serial("id").primaryKey(),
-  title: text("title").notNull(),
-  description: text("description"),
-  status: text("status").notNull().default("not_started"),
-  isBlocked: boolean("is_blocked").notNull().default(false),
-  blockedReason: text("blocked_reason"),
-  size: text("size"),
-  isArchived: boolean("is_archived").notNull().default(false),
-  createdAt: timestamp("created_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
-  createdBy: integer("created_by").references(() => usersTable.id, { onDelete: "set null" }),
-  archivedAt: timestamp("archived_at", { withTimezone: true }),
-  dueDate: date("due_date"),
-  projectId: integer("project_id").references(() => projectsTable.id),
-  milestoneId: integer("milestone_id").references(() => milestonesTable.id),
-  sprintId: integer("sprint_id").references(() => sprintsTable.id),
-});
+export const tasksTable = pgTable(
+  "tasks",
+  {
+    id: serial("id").primaryKey(),
+    title: text("title").notNull(),
+    description: text("description"),
+    status: text("status").notNull().default("not_started"),
+    isBlocked: boolean("is_blocked").notNull().default(false),
+    blockedReason: text("blocked_reason"),
+    size: text("size"),
+    isArchived: boolean("is_archived").notNull().default(false),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    createdBy: integer("created_by").references(() => usersTable.id, { onDelete: "set null" }),
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
+    dueDate: date("due_date"),
+    projectId: integer("project_id").references(() => projectsTable.id),
+    milestoneId: integer("milestone_id").references(() => milestonesTable.id),
+    sprintId: integer("sprint_id").references(() => sprintsTable.id),
+  },
+  table => [
+    check(
+      "tasks_status_check",
+      sql`${table.status} IN ('not_started', 'in_progress', 'needs_review', 'done')`,
+    ),
+  ],
+);
 
 // ─── Task assignees (many-to-many) ─────────────────────────────────────────────
 
