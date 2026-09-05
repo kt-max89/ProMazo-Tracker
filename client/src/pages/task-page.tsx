@@ -280,7 +280,7 @@ export default function TaskPage() {
                       <Input
                         {...field}
                         aria-label="Task title"
-                        className="h-auto border-0 bg-transparent px-0 py-1 text-3xl sm:text-4xl font-bold tracking-tight shadow-none focus-visible:ring-0 break-words"
+                        className="h-auto border-0 bg-transparent px-0 py-1 text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight shadow-none focus-visible:ring-0 break-words"
                         data-testid="input-task-page-title"
                       />
                     </FormControl>
