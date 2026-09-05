@@ -13,6 +13,7 @@ import TasksPage from "@/pages/tasks-page";
 import ProjectsPage from "@/pages/projects-page";
 import TeamOverviewPage from "@/pages/team-overview-page";
 import MyTasksPage from "@/pages/my-tasks-page";
+import TaskPage from "@/pages/task-page";
 import NotFound from "@/pages/not-found";
 import { Loader2 } from "lucide-react";
 
@@ -51,6 +52,7 @@ function Router() {
       <Route path="/admin" component={() => <AdminRoute component={AdminPage} />} />
       <Route path="/history" component={() => <ProtectedRoute component={HistoryPage} />} />
       <Route path="/tasks" component={() => <ProtectedRoute component={TasksPage} />} />
+      <Route path="/tasks/:id" component={() => <ProtectedRoute component={TaskPage} />} />
       <Route path="/projects" component={() => <ProtectedRoute component={ProjectsPage} />} />
       <Route path="/team-overview" component={() => <ProtectedRoute component={TeamOverviewPage} />} />
       <Route path="/my-tasks" component={() => <ProtectedRoute component={MyTasksPage} />} />

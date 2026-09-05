@@ -392,14 +392,14 @@ function ProjectCard({
   sprints,
   onEdit,
   onAddTask,
-  onEditTask,
+  onOpenTask,
 }: {
   project: Project;
   tasks: Task[];
   sprints: Sprint[];
   onEdit: () => void;
   onAddTask: () => void;
-  onEditTask: (task: Task) => void;
+  onOpenTask: (task: Task) => void;
 }) {
   const STATUS_COLORS: Record<string, string> = {
     not_started: "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300",
@@ -461,7 +461,7 @@ function ProjectCard({
           tasks.map(task => (
             <button
               key={task.id}
-              onClick={() => onEditTask(task)}
+              onClick={() => onOpenTask(task)}
               className={`flex items-center justify-between gap-2 text-left px-2 py-1.5 rounded-lg hover:bg-muted transition-colors group ${
                 task.isBlocked ? "border border-red-500" : ""
               }`}
@@ -504,7 +504,6 @@ export default function ProjectsPage() {
   const [editProject, setEditProject] = useState<Project | null>(null);
   const [taskFormOpen, setTaskFormOpen] = useState(false);
   const [taskFormProjectId, setTaskFormProjectId] = useState<number | null>(null);
-  const [editTask, setEditTask] = useState<Task | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [sprintFilter, setSprintFilter] = useState<SprintFilterValue>("current");
   const { toast } = useToast();
@@ -567,7 +566,6 @@ export default function ProjectsPage() {
   function closeTaskForm() {
     setTaskFormOpen(false);
     setTaskFormProjectId(null);
-    setEditTask(null);
   }
 
   return (
@@ -684,7 +682,7 @@ export default function ProjectsPage() {
                   sprints={sprints}
                   onEdit={() => setEditProject(project)}
                   onAddTask={() => openAddTask(project.id)}
-                  onEditTask={task => setEditTask(task)}
+                  onOpenTask={task => setLocation(`/tasks/${task.id}?from=projects`)}
                 />
               ))}
             </div>
@@ -707,9 +705,6 @@ export default function ProjectsPage() {
           onClose={closeTaskForm}
           defaultProjectId={taskFormProjectId ?? undefined}
         />
-      )}
-      {editTask && (
-        <TaskFormDialog open onClose={closeTaskForm} task={editTask} />
       )}
     </div>
   );

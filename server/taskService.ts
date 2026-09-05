@@ -86,6 +86,12 @@ export async function listTasks(filters: TaskFilters = {}): Promise<Task[]> {
   return mapTasksWithAssignees(rows);
 }
 
+export async function getTask(id: number): Promise<Task | undefined> {
+  const [row] = await db.select().from(tasksTable).where(eq(tasksTable.id, id));
+  if (!row) return undefined;
+  return mapTask(row, await getAssigneeIds(id));
+}
+
 export async function createTask(input: InsertTask): Promise<Task> {
   if (!input.title?.trim()) {
     throw new Error("Title is required");

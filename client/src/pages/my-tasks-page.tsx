@@ -388,7 +388,11 @@ export default function MyTasksPage() {
             }`}
           >
             {editTask && (
-              <TaskDetailPanel task={editTask} onClose={() => setEditTask(null)} />
+              <TaskDetailPanel
+                task={editTask}
+                onClose={() => setEditTask(null)}
+                onExpand={() => setLocation(`/tasks/${editTask.id}?from=my-tasks`)}
+              />
             )}
           </div>
         </div>

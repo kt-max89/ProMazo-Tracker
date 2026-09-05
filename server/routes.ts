@@ -6,7 +6,7 @@ import multer from "multer";
 import { storage } from "./storage";
 import { setupAuth, requireAuth, requireAdmin } from "./auth";
 import { registerSchema, loginSchema, insertTaskSchema, updateTaskSchema, insertProjectSchema, updateProjectSchema, insertMilestoneSchema, updateMilestoneSchema, insertTaskCommentSchema, insertTeamPostSchema } from "@shared/schema";
-import { listTasks, createTask, updateTask, archiveTask, restoreTask } from "./taskService";
+import { listTasks, getTask, createTask, updateTask, archiveTask, restoreTask } from "./taskService";
 import { listCommentsByTaskId, createComment } from "./commentService";
 import { createTeamPost, listTeamPosts, toggleTeamPostPin } from "./teamPostService";
 import { listProjects, getProject, createProject, updateProject } from "./projectService";
@@ -829,6 +829,18 @@ export async function registerRoutes(
     try {
       const taskList = await listTasks({ archived: true });
       return res.json(taskList);
+    } catch (err: any) {
+      return res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/tasks/:id", requireAuth, async (req, res) => {
+    try {
+      const id = parseInt(String(req.params.id));
+      if (isNaN(id)) return res.status(400).json({ message: "Invalid task id" });
+      const task = await getTask(id);
+      if (!task) return res.status(404).json({ message: "Task not found" });
+      return res.json(task);
     } catch (err: any) {
       return res.status(500).json({ message: err.message });
     }

@@ -5,7 +5,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Archive, X, AlertTriangle } from "lucide-react";
+import { Loader2, Archive, X, AlertTriangle, Maximize2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -64,9 +64,11 @@ type TaskFormValues = z.infer<typeof taskFormSchema>;
 export function TaskDetailPanel({
   task,
   onClose,
+  onExpand,
 }: {
   task: Task;
   onClose: () => void;
+  onExpand?: () => void;
 }) {
   const { toast } = useToast();
 
@@ -167,14 +169,27 @@ export function TaskDetailPanel({
       {/* Panel header */}
       <div className="flex items-center justify-between px-5 py-3 border-b shrink-0">
         <h2 className="font-semibold text-base">Edit task</h2>
-        <button
-          data-testid="button-close-task-panel"
-          onClick={onClose}
-          className="p-1.5 rounded-lg hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
-          aria-label="Close panel"
-        >
-          <X className="w-4 h-4" />
-        </button>
+        <div className="flex items-center gap-1">
+          {onExpand && (
+            <button
+              data-testid="button-expand-task"
+              onClick={onExpand}
+              className="p-1.5 rounded-lg hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+              aria-label="Open full task page"
+              title="Open full task page"
+            >
+              <Maximize2 className="w-4 h-4" />
+            </button>
+          )}
+          <button
+            data-testid="button-close-task-panel"
+            onClick={onClose}
+            className="p-1.5 rounded-lg hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+            aria-label="Close panel"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
       </div>
 
       {/* Scrollable form body */}
