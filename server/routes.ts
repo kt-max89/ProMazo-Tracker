@@ -8,7 +8,7 @@ import { setupAuth, requireAuth, requireAdmin } from "./auth";
 import { registerSchema, loginSchema, insertTaskSchema, updateTaskSchema, insertProjectSchema, updateProjectSchema, insertMilestoneSchema, updateMilestoneSchema, insertTaskCommentSchema, insertTeamPostSchema, insertSprintReflectionSchema } from "@shared/schema";
 import { listTasks, getTask, createTask, updateTask, archiveTask, restoreTask } from "./taskService";
 import { listCommentsByTaskId, createComment } from "./commentService";
-import { createTeamPost, listTeamPosts, toggleTeamPostPin } from "./teamPostService";
+import { createTeamPost, deleteOwnTeamPost, listTeamPosts, toggleTeamPostPin } from "./teamPostService";
 import { listProjects, getProject, createProject, updateProject } from "./projectService";
 import { listMilestones, listMilestonesByProject, getMilestone, createMilestone, updateMilestone, deleteMilestone } from "./milestoneService";
 import { createNextSprint, getTrackerSettings, listSprints, setCurrentSprint } from "./sprintService";
@@ -666,6 +666,25 @@ export async function registerRoutes(
       return res.json(await toggleTeamPostPin(id));
     } catch (err: any) {
       const status = err.message === "Post not found" ? 404 : 400;
+      return res.status(status).json({ message: err.message });
+    }
+  });
+
+  app.delete("/api/team-posts/:id", requireAuth, async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      if (!Number.isInteger(id) || id < 1) {
+        return res.status(400).json({ message: "Invalid post id" });
+      }
+      await deleteOwnTeamPost(id, req.user!.id);
+      return res.json({ message: "Post deleted" });
+    } catch (err: any) {
+      const status =
+        err.message === "Post not found"
+          ? 404
+          : err.message === "You can only delete your own posts"
+            ? 403
+            : 500;
       return res.status(status).json({ message: err.message });
     }
   });

@@ -16,6 +16,7 @@ import {
   UsersRound,
   Zap,
   ClipboardCheck,
+  Trash2,
 } from "lucide-react";
 import { AppSidebar } from "@/components/app-sidebar";
 import { Button } from "@/components/ui/button";
@@ -28,6 +29,16 @@ import type { Project, SprintReflection, TeamPost } from "@shared/schema";
 import { ReflectionDialog } from "@/components/reflection-dialog";
 import { ReflectionDetailDialog } from "@/components/reflection-detail-dialog";
 import { ReflectionsTable } from "@/components/reflections-table";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 function formatDateTime(iso: string): string {
   return new Date(iso).toLocaleString(undefined, {
@@ -46,6 +57,7 @@ export default function TeamOverviewPage() {
   const [body, setBody] = useState("");
   const [reflectionOpen, setReflectionOpen] = useState(false);
   const [selectedReflection, setSelectedReflection] = useState<SprintReflection | null>(null);
+  const [postToDelete, setPostToDelete] = useState<TeamPost | null>(null);
 
   const postsQuery = useQuery<TeamPost[]>({
     queryKey: ["/api/team-posts", showAll],
@@ -79,6 +91,19 @@ export default function TeamOverviewPage() {
     },
     onError: (err: any) => {
       toast({ title: "Could not update pin", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: number) =>
+      apiRequest("DELETE", `/api/team-posts/${id}`).then(r => r.json()),
+    onSuccess: () => {
+      setPostToDelete(null);
+      queryClient.invalidateQueries({ queryKey: ["/api/team-posts"] });
+      toast({ title: "Post deleted" });
+    },
+    onError: (err: any) => {
+      toast({ title: "Could not delete post", description: err.message, variant: "destructive" });
     },
   });
 
@@ -207,21 +232,35 @@ export default function TeamOverviewPage() {
                             {formatDateTime(post.createdAt)}
                           </time>
                         </div>
-                        <button
-                          onClick={() => pinMutation.mutate(post.id)}
-                          disabled={pinMutation.isPending}
-                          className={`shrink-0 inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs transition-colors ${
-                            post.pinned
-                              ? "bg-primary/10 text-primary"
-                              : "text-muted-foreground hover:bg-muted"
-                          }`}
-                          title={post.pinned ? "Unpin post" : "Pin post"}
-                          aria-label={post.pinned ? "Unpin post" : "Pin post"}
-                          data-testid={`button-pin-team-post-${post.id}`}
-                        >
-                          <Pin className={`w-3.5 h-3.5 ${post.pinned ? "fill-current" : ""}`} />
-                          {post.pinned ? "Pinned" : "Pin"}
-                        </button>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <button
+                            onClick={() => pinMutation.mutate(post.id)}
+                            disabled={pinMutation.isPending}
+                            className={`inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs transition-colors ${
+                              post.pinned
+                                ? "bg-primary/10 text-primary"
+                                : "text-muted-foreground hover:bg-muted"
+                            }`}
+                            title={post.pinned ? "Unpin post" : "Pin post"}
+                            aria-label={post.pinned ? "Unpin post" : "Pin post"}
+                            data-testid={`button-pin-team-post-${post.id}`}
+                          >
+                            <Pin className={`w-3.5 h-3.5 ${post.pinned ? "fill-current" : ""}`} />
+                            {post.pinned ? "Pinned" : "Pin"}
+                          </button>
+                          {post.authorId === user?.id && (
+                            <button
+                              onClick={() => setPostToDelete(post)}
+                              disabled={deleteMutation.isPending}
+                              className="inline-flex items-center rounded-md p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors"
+                              title="Delete post"
+                              aria-label="Delete your post"
+                              data-testid={`button-delete-team-post-${post.id}`}
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
                       </div>
                       <div className="prose prose-sm max-w-none dark:prose-invert prose-headings:mt-3 prose-headings:mb-1 prose-p:my-1 prose-ul:my-1 prose-ol:my-1 prose-li:my-0.5 prose-strong:text-foreground">
                         <ReactMarkdown>{post.body}</ReactMarkdown>
@@ -323,6 +362,28 @@ export default function TeamOverviewPage() {
         reflection={selectedReflection}
         onClose={() => setSelectedReflection(null)}
       />
+      <AlertDialog open={postToDelete != null} onOpenChange={open => !open && setPostToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this team update?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This permanently removes your post from Team Overview. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleteMutation.isPending}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => postToDelete && deleteMutation.mutate(postToDelete.id)}
+              disabled={deleteMutation.isPending}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              data-testid="button-confirm-delete-team-post"
+            >
+              {deleteMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+              Delete post
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

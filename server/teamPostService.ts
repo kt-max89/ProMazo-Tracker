@@ -1,4 +1,4 @@
-import { desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { db } from "./db";
 import { teamPostsTable, usersTable } from "./schema";
 import type { TeamPost } from "@shared/schema";
@@ -85,4 +85,20 @@ export async function toggleTeamPostPin(id: number): Promise<TeamPost> {
     .where(eq(teamPostsTable.id, id));
 
   return mapTeamPost(updated);
+}
+
+export async function deleteOwnTeamPost(id: number, authorId: number): Promise<void> {
+  const [post] = await db
+    .select({ authorId: teamPostsTable.authorId })
+    .from(teamPostsTable)
+    .where(eq(teamPostsTable.id, id));
+
+  if (!post) throw new Error("Post not found");
+  if (post.authorId !== authorId) throw new Error("You can only delete your own posts");
+
+  const [deleted] = await db
+    .delete(teamPostsTable)
+    .where(and(eq(teamPostsTable.id, id), eq(teamPostsTable.authorId, authorId)))
+    .returning({ id: teamPostsTable.id });
+  if (!deleted) throw new Error("Post not found");
 }
