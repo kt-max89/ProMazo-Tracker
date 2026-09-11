@@ -155,11 +155,13 @@ export const insertSprintReflectionSchema = z.object({
 
 export type InsertSprintReflection = z.infer<typeof insertSprintReflectionSchema>;
 
+export const taskStatuses = ["not_started", "in_progress", "needs_review", "done"] as const;
+
 export type Task = {
   id: number;
   title: string;
   description: string | null;
-  status: "not_started" | "in_progress" | "needs_review" | "done";
+  status: TaskStatus;
   isBlocked: boolean;
   blockedReason: string | null;
   size: "XXS" | "XS" | "S" | "M" | "L" | "XL" | "XXL" | null;
@@ -178,7 +180,7 @@ export type Task = {
 export type InsertTask = {
   title: string;
   description?: string | null;
-  status?: "not_started" | "in_progress" | "needs_review" | "done";
+  status?: TaskStatus;
   isBlocked?: boolean;
   blockedReason?: string | null;
   size?: "XXS" | "XS" | "S" | "M" | "L" | "XL" | "XXL" | null;
@@ -225,7 +227,7 @@ export const updateMilestoneSchema = insertMilestoneSchema.partial().omit({ proj
 export const insertTaskSchema = z.object({
   title: z.string().min(1, "Title is required"),
   description: z.string().nullable().optional(),
-  status: z.enum(["not_started", "in_progress", "needs_review", "done"]).optional(),
+  status: z.enum(taskStatuses).optional(),
   isBlocked: z.boolean().optional(),
   blockedReason: z.string().nullable().optional(),
   size: z.enum(["XXS", "XS", "S", "M", "L", "XL", "XXL"]).nullable().optional(),
@@ -283,3 +285,5 @@ export const insertDocumentSchema = z.object({
   allowedUsers: z.array(z.string()).optional(),
   allowedDomain: z.string().nullable().optional(),
 });
+
+export type TaskStatus = (typeof taskStatuses)[number];

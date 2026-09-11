@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/button";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import type { Task, Project, Milestone, Sprint, TrackerSettings } from "@shared/schema";
+import type { Task, Project, Milestone, Sprint, TrackerSettings, TaskStatus } from "@shared/schema";
 import { AppSidebar } from "@/components/app-sidebar";
 import { SearchBar } from "@/components/search-bar";
 import { TaskCard } from "@/components/task-card";
@@ -136,13 +136,13 @@ export default function MyTasksPage() {
   });
 
   const changeStatusMutation = useMutation({
-    mutationFn: ({ id, status }: { id: number; status: string }) =>
+    mutationFn: ({ id, status }: { id: number; status: TaskStatus }) =>
       apiRequest("PATCH", `/api/tasks/${id}`, { status }).then(r => r.json()),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/tasks"] }),
-    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+    onError: (err: any) => toast({ title: "Could not move task", description: err.message, variant: "destructive" }),
   });
 
-  function handleDrop(taskId: number, newStatus: string) {
+  function handleDrop(taskId: number, newStatus: TaskStatus) {
     const task = tasks.find(t => t.id === taskId);
     if (!task || task.status === newStatus) return;
     changeStatusMutation.mutate({ id: taskId, status: newStatus });

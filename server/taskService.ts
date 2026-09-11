@@ -1,15 +1,12 @@
 import { eq, and, or, ilike, inArray } from "drizzle-orm";
 import { db } from "./db";
 import { tasksTable, taskAssigneesTable } from "./schema";
-import type { Task, InsertTask } from "@shared/schema";
+import { taskStatuses, type Task, type InsertTask, type TaskStatus } from "@shared/schema";
 import { getProject } from "./projectService";
 import { getMilestone } from "./milestoneService";
 import { getSprint, getTrackerSettings } from "./sprintService";
 
 export type TaskFilters = { archived?: boolean };
-
-const VALID_STATUSES = ["not_started", "in_progress", "needs_review", "done"] as const;
-type TaskStatus = (typeof VALID_STATUSES)[number];
 
 const VALID_SIZES = ["XXS", "XS", "S", "M", "L", "XL", "XXL"] as const;
 type TaskSize = (typeof VALID_SIZES)[number];
@@ -96,8 +93,8 @@ export async function createTask(input: InsertTask): Promise<Task> {
   if (!input.title?.trim()) {
     throw new Error("Title is required");
   }
-  if (input.status && !VALID_STATUSES.includes(input.status as TaskStatus)) {
-    throw new Error(`Status must be one of: ${VALID_STATUSES.join(", ")}`);
+  if (input.status && !taskStatuses.includes(input.status as TaskStatus)) {
+    throw new Error(`Status must be one of: ${taskStatuses.join(", ")}`);
   }
   if (input.isBlocked && !input.blockedReason?.trim()) {
     throw new Error("Blocked reason is required when a task is marked as blocked");
@@ -156,8 +153,8 @@ export async function updateTask(id: number, input: Partial<InsertTask>): Promis
   if (input.title !== undefined && !input.title?.trim()) {
     throw new Error("Title is required");
   }
-  if (input.status !== undefined && !VALID_STATUSES.includes(input.status as TaskStatus)) {
-    throw new Error(`Status must be one of: ${VALID_STATUSES.join(", ")}`);
+  if (input.status !== undefined && !taskStatuses.includes(input.status as TaskStatus)) {
+    throw new Error(`Status must be one of: ${taskStatuses.join(", ")}`);
   }
   if (input.size != null && !VALID_SIZES.includes(input.size as TaskSize)) {
     throw new Error(`Size must be one of: ${VALID_SIZES.join(", ")}`);

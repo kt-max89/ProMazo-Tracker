@@ -28,6 +28,9 @@ const statements = [
   `ALTER TABLE tasks ADD COLUMN IF NOT EXISTS blocked_reason TEXT`,
   `ALTER TABLE tasks ADD COLUMN IF NOT EXISTS size TEXT`,
   `ALTER TABLE tasks ADD COLUMN IF NOT EXISTS due_date DATE`,
+  `ALTER TABLE tasks DROP CONSTRAINT IF EXISTS tasks_status_check`,
+  `ALTER TABLE tasks ADD CONSTRAINT tasks_status_check
+     CHECK (status IN ('not_started', 'in_progress', 'needs_review', 'done'))`,
   `CREATE TABLE IF NOT EXISTS sprints (
     id SERIAL PRIMARY KEY,
     number INTEGER NOT NULL UNIQUE,

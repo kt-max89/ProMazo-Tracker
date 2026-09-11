@@ -92,6 +92,32 @@ async function initializeTeamPosts(): Promise<void> {
 }
 
 /**
+ * Older databases were created before Needs review was added and can retain a
+ * CHECK constraint that rejects needs_review even though the application accepts
+ * it. Replacing the named constraint is safe to repeat and preserves all rows.
+ */
+async function repairTaskStatusConstraint(): Promise<void> {
+  await db.execute(sql`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conrelid = 'tasks'::regclass
+          AND conname = 'tasks_status_check'
+          AND pg_get_constraintdef(oid) LIKE '%needs_review%'
+      ) THEN
+        ALTER TABLE tasks DROP CONSTRAINT IF EXISTS tasks_status_check;
+        ALTER TABLE tasks
+          ADD CONSTRAINT tasks_status_check
+          CHECK (status IN ('not_started', 'in_progress', 'needs_review', 'done'));
+      END IF;
+    END
+    $$;
+  `);
+}
+
+/**
  * Creates sprint reflections after the shared sprint model is initialized.
  * The author name is stored as a snapshot so submitted reflections remain
  * attributable if a user account is later removed.
@@ -119,4 +145,5 @@ export async function runMigrations(): Promise<void> {
   await initializeSprints();
   await initializeTeamPosts();
   await initializeReflections();
+  await repairTaskStatusConstraint();
 }
