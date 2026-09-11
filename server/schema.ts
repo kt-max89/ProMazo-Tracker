@@ -158,6 +158,28 @@ export const trackerSettingsTable = pgTable("tracker_settings", {
     .default(false),
 });
 
+// ─── Sprint reflections ───────────────────────────────────────────────────────
+
+export const reflectionsTable = pgTable("reflections", {
+  id: serial("id").primaryKey(),
+  authorId: integer("author_id").references(() => usersTable.id, { onDelete: "set null" }),
+  authorName: text("author_name").notNull(),
+  sprintId: integer("sprint_id")
+    .notNull()
+    .references(() => sprintsTable.id),
+  summary: text("summary").notNull(),
+  wastes: jsonb("wastes")
+    .$type<Array<{ category: "wastefulness" | "imbalance" | "overload"; description: string }>>()
+    .notNull(),
+  kaizenWhat: text("kaizen_what").notNull(),
+  kaizenWhy: text("kaizen_why").notNull(),
+  kaizenDone: text("kaizen_done").notNull(),
+  impact: text("impact").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
 // ─── Tasks ────────────────────────────────────────────────────────────────────
 
 export const tasksTable = pgTable(

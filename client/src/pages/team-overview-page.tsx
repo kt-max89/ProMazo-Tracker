@@ -15,6 +15,7 @@ import {
   Sun,
   UsersRound,
   Zap,
+  ClipboardCheck,
 } from "lucide-react";
 import { AppSidebar } from "@/components/app-sidebar";
 import { Button } from "@/components/ui/button";
@@ -23,7 +24,10 @@ import { useAuth } from "@/lib/auth";
 import { useTheme } from "@/components/theme-provider";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import type { Project, TeamPost } from "@shared/schema";
+import type { Project, SprintReflection, TeamPost } from "@shared/schema";
+import { ReflectionDialog } from "@/components/reflection-dialog";
+import { ReflectionDetailDialog } from "@/components/reflection-detail-dialog";
+import { ReflectionsTable } from "@/components/reflections-table";
 
 function formatDateTime(iso: string): string {
   return new Date(iso).toLocaleString(undefined, {
@@ -37,9 +41,11 @@ export default function TeamOverviewPage() {
   const { theme, toggleTheme } = useTheme();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(() => window.innerWidth >= 768);
   const [showAll, setShowAll] = useState(false);
   const [body, setBody] = useState("");
+  const [reflectionOpen, setReflectionOpen] = useState(false);
+  const [selectedReflection, setSelectedReflection] = useState<SprintReflection | null>(null);
 
   const postsQuery = useQuery<TeamPost[]>({
     queryKey: ["/api/team-posts", showAll],
@@ -47,6 +53,9 @@ export default function TeamOverviewPage() {
   });
   const projectsQuery = useQuery<Project[]>({
     queryKey: ["/api/projects"],
+  });
+  const reflectionsQuery = useQuery<SprintReflection[]>({
+    queryKey: ["/api/reflections/recent"],
   });
 
   const createMutation = useMutation({
@@ -265,9 +274,55 @@ export default function TeamOverviewPage() {
                 </div>
               )}
             </section>
+
+            <section className="space-y-3" aria-labelledby="reflections-heading">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <h2 id="reflections-heading" className="text-lg font-semibold flex items-center gap-2">
+                    <ClipboardCheck className="h-5 w-5 text-primary" />
+                    Sprint reflections
+                  </h2>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Review recent sprint learnings and share your own.
+                  </p>
+                </div>
+                <div className="flex gap-2">
+                  <Link href="/reflections">
+                    <Button variant="outline" size="sm">See all reflections</Button>
+                  </Link>
+                  <Button size="sm" onClick={() => setReflectionOpen(true)} data-testid="button-add-reflection">
+                    <Plus className="h-3.5 w-3.5 mr-1.5" />
+                    Add reflection
+                  </Button>
+                </div>
+              </div>
+              {reflectionsQuery.isLoading ? (
+                <div className="flex items-center justify-center py-10 text-muted-foreground">
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                </div>
+              ) : reflectionsQuery.isError ? (
+                <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-5 text-sm text-destructive">
+                  We couldn’t load sprint reflections. Please refresh and try again.
+                </div>
+              ) : reflectionsQuery.data?.length === 0 ? (
+                <div className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">
+                  No sprint reflections yet. Submit the first one.
+                </div>
+              ) : (
+                <ReflectionsTable
+                  reflections={reflectionsQuery.data ?? []}
+                  onSelect={setSelectedReflection}
+                />
+              )}
+            </section>
           </div>
         </main>
       </div>
+      <ReflectionDialog open={reflectionOpen} onClose={() => setReflectionOpen(false)} />
+      <ReflectionDetailDialog
+        reflection={selectedReflection}
+        onClose={() => setSelectedReflection(null)}
+      />
     </div>
   );
 }

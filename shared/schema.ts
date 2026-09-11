@@ -115,6 +115,46 @@ export type TrackerSettings = {
   currentSprintId: number | null;
 };
 
+export const wasteCategories = ["wastefulness", "imbalance", "overload"] as const;
+export type WasteCategory = (typeof wasteCategories)[number];
+
+export type ReflectionWaste = {
+  category: WasteCategory;
+  description: string;
+};
+
+export type SprintReflection = {
+  id: number;
+  authorId: number | null;
+  authorName: string;
+  sprintId: number;
+  sprintNumber: number;
+  summary: string;
+  wastes: ReflectionWaste[];
+  kaizenWhat: string;
+  kaizenWhy: string;
+  kaizenDone: string;
+  impact: string;
+  createdAt: string;
+};
+
+export const reflectionWasteSchema = z.object({
+  category: z.enum(wasteCategories),
+  description: z.string().trim().min(1, "Waste description is required"),
+});
+
+export const insertSprintReflectionSchema = z.object({
+  sprintId: z.number().int().positive("Sprint is required"),
+  summary: z.string().trim().min(1, "Sprint summary is required"),
+  wastes: z.array(reflectionWasteSchema).min(2, "Add at least two wastes"),
+  kaizenWhat: z.string().trim().min(1, "Kaizen what is required"),
+  kaizenWhy: z.string().trim().min(1, "Kaizen why is required"),
+  kaizenDone: z.string().trim().min(1, "Definition of done is required"),
+  impact: z.string().trim().min(1, "Impact statement is required"),
+});
+
+export type InsertSprintReflection = z.infer<typeof insertSprintReflectionSchema>;
+
 export type Task = {
   id: number;
   title: string;

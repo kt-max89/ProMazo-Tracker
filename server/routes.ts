@@ -5,13 +5,14 @@ import bcrypt from "bcrypt";
 import multer from "multer";
 import { storage } from "./storage";
 import { setupAuth, requireAuth, requireAdmin } from "./auth";
-import { registerSchema, loginSchema, insertTaskSchema, updateTaskSchema, insertProjectSchema, updateProjectSchema, insertMilestoneSchema, updateMilestoneSchema, insertTaskCommentSchema, insertTeamPostSchema } from "@shared/schema";
+import { registerSchema, loginSchema, insertTaskSchema, updateTaskSchema, insertProjectSchema, updateProjectSchema, insertMilestoneSchema, updateMilestoneSchema, insertTaskCommentSchema, insertTeamPostSchema, insertSprintReflectionSchema } from "@shared/schema";
 import { listTasks, getTask, createTask, updateTask, archiveTask, restoreTask } from "./taskService";
 import { listCommentsByTaskId, createComment } from "./commentService";
 import { createTeamPost, listTeamPosts, toggleTeamPostPin } from "./teamPostService";
 import { listProjects, getProject, createProject, updateProject } from "./projectService";
 import { listMilestones, listMilestonesByProject, getMilestone, createMilestone, updateMilestone, deleteMilestone } from "./milestoneService";
 import { createNextSprint, getTrackerSettings, listSprints, setCurrentSprint } from "./sprintService";
+import { createReflection, listReflections } from "./reflectionService";
 import { chunkText, hashChunk, getEmbedding, getEmbeddings } from "./openai";
 import { handleChatMessage } from "./chatOrchestrator";
 import { validateProposal } from "./proposalSchema";
@@ -665,6 +666,48 @@ export async function registerRoutes(
       return res.json(await toggleTeamPostPin(id));
     } catch (err: any) {
       const status = err.message === "Post not found" ? 404 : 400;
+      return res.status(status).json({ message: err.message });
+    }
+  });
+
+  // Sprint reflections
+  app.get("/api/reflections/recent", requireAuth, async (_req, res) => {
+    try {
+      return res.json(await listReflections({ limit: 10 }));
+    } catch (err: any) {
+      return res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/reflections", requireAuth, async (req, res) => {
+    try {
+      const sprintId = req.query.sprintId == null ? undefined : Number(req.query.sprintId);
+      const authorId = req.query.authorId == null ? undefined : Number(req.query.authorId);
+      if (sprintId != null && (!Number.isInteger(sprintId) || sprintId < 1)) {
+        return res.status(400).json({ message: "Invalid sprint filter" });
+      }
+      if (authorId != null && (!Number.isInteger(authorId) || authorId < 1)) {
+        return res.status(400).json({ message: "Invalid person filter" });
+      }
+      return res.json(await listReflections({ sprintId, authorId }));
+    } catch (err: any) {
+      return res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/reflections", requireAuth, async (req, res) => {
+    try {
+      const parsed = insertSprintReflectionSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: parsed.error.errors[0].message });
+      }
+      return res.json(await createReflection({
+        ...parsed.data,
+        authorId: req.user!.id,
+        authorName: req.user!.displayName,
+      }));
+    } catch (err: any) {
+      const status = err.message === "Sprint not found" ? 404 : 400;
       return res.status(status).json({ message: err.message });
     }
   });

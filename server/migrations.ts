@@ -91,8 +91,32 @@ async function initializeTeamPosts(): Promise<void> {
   `);
 }
 
+/**
+ * Creates sprint reflections after the shared sprint model is initialized.
+ * The author name is stored as a snapshot so submitted reflections remain
+ * attributable if a user account is later removed.
+ */
+async function initializeReflections(): Promise<void> {
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS reflections (
+      id SERIAL PRIMARY KEY,
+      author_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      author_name TEXT NOT NULL,
+      sprint_id INTEGER NOT NULL REFERENCES sprints(id),
+      summary TEXT NOT NULL,
+      wastes JSONB NOT NULL,
+      kaizen_what TEXT NOT NULL,
+      kaizen_why TEXT NOT NULL,
+      kaizen_done TEXT NOT NULL,
+      impact TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `);
+}
+
 export async function runMigrations(): Promise<void> {
   await clearDocumentAllowedUsers();
   await initializeSprints();
   await initializeTeamPosts();
+  await initializeReflections();
 }
