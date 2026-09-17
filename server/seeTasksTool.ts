@@ -1,17 +1,11 @@
-import {
-  getTaskCounts,
-  getTasksByStatus,
-  getBlockedTasks,
-  searchTasks,
-  listTasks,
-  type TaskCounts,
-} from "./taskService";
+import { queryTasks, type TaskCounts, type TaskFilters } from "./taskService";
 import { listProjects } from "./projectService";
 import { listMilestones } from "./milestoneService";
 import type { Task } from "@shared/schema";
 import type { SeeTasksArgs } from "./toolIntentSelector";
 import { db } from "./db";
-import { usersTable } from "./schema";
+import { sprintsTable, usersTable } from "./schema";
+import { getTrackerSettings } from "./sprintService";
 import { inArray } from "drizzle-orm";
 
 export type CompactTask = {
@@ -81,11 +75,58 @@ function formatCompact(t: CompactTask): string {
 
 export async function runSeeTasksTool(args: SeeTasksArgs): Promise<SeeTasksResult> {
   const limit = Math.min(Math.max(1, args.limit ?? 10), 20);
+  const [allProjects, allMilestones, users, sprintRows, settings] = await Promise.all([
+    args.project ? listProjects() : Promise.resolve([]),
+    args.milestone ? listMilestones() : Promise.resolve([]),
+    args.person
+      ? db.select({ id: usersTable.id, displayName: usersTable.displayName }).from(usersTable)
+      : Promise.resolve([]),
+    args.sprintNumber != null
+      ? db.select({ id: sprintsTable.id, number: sprintsTable.number }).from(sprintsTable)
+      : Promise.resolve([]),
+    args.currentSprint ? getTrackerSettings() : Promise.resolve(undefined),
+  ]);
 
-  const counts = await getTaskCounts();
+  const filters: TaskFilters = {
+    archived: false,
+    query: args.query,
+    status: args.status,
+    isBlocked: args.isBlocked,
+  };
+  if (args.project) {
+    filters.projectIds = matchingIds(allProjects, args.project);
+  }
+  if (args.milestone) {
+    filters.milestoneIds = matchingIds(allMilestones, args.milestone);
+  }
+  if (args.person) {
+    filters.assigneeIds = matchingIds(users, args.person, "displayName");
+  }
+
+  const requestedSprintIds: number[] = [];
+  if (args.sprintNumber != null) {
+    requestedSprintIds.push(...sprintRows.filter(s => s.number === args.sprintNumber).map(s => s.id));
+  }
+  if (args.currentSprint) {
+    if (settings?.currentSprintId == null) {
+      filters.sprintIds = [];
+    } else if (args.sprintNumber != null) {
+      filters.sprintIds = requestedSprintIds.includes(settings.currentSprintId)
+        ? [settings.currentSprintId]
+        : [];
+    } else {
+      filters.sprintIds = [settings.currentSprintId];
+    }
+  } else if (args.sprintNumber != null) {
+    filters.sprintIds = requestedSprintIds;
+  }
+
+  const matched = await queryTasks(filters);
+  const counts: TaskCounts = { not_started: 0, in_progress: 0, needs_review: 0, done: 0 };
+  for (const task of matched) counts[task.status] = (counts[task.status] ?? 0) + 1;
   const total = Object.values(counts).reduce((a, b) => a + b, 0);
-
-  const summaryLine = `Task counts (active): total=${total}, not_started=${counts.not_started}, in_progress=${counts.in_progress}, needs_review=${counts.needs_review}, done=${counts.done}`;
+  const filterDescription = describeFilters(args);
+  const summaryLine = `Task counts (${filterDescription}): total=${total}, not_started=${counts.not_started}, in_progress=${counts.in_progress}, needs_review=${counts.needs_review}, done=${counts.done}`;
 
   if (args.mode === "summary") {
     const isEmpty = total === 0;
@@ -100,31 +141,12 @@ export async function runSeeTasksTool(args: SeeTasksArgs): Promise<SeeTasksResul
     };
   }
 
-  let matched: Task[] = [];
-
-  if (args.isBlocked) {
-    matched = await getBlockedTasks();
-  } else if (args.status) {
-    matched = await getTasksByStatus(args.status);
-  } else if (args.query) {
-    matched = await searchTasks(args.query);
-  } else {
-    matched = await listTasks({ archived: false });
-  }
-
-  matched = matched.slice(0, limit);
-  const compactTasks = await enrichTasks(matched);
+  const compactTasks = await enrichTasks(matched.slice(0, limit));
 
   const parts: string[] = [summaryLine];
 
   if (compactTasks.length > 0) {
-    const label = args.isBlocked
-      ? "\nBlocked tasks:"
-      : args.status
-      ? `\n${args.status} tasks:`
-      : args.query
-      ? `\nTasks matching "${args.query}":`
-      : "\nAll active tasks:";
+    const label = `\nMatching tasks (${filterDescription}):`;
     parts.push(label);
     compactTasks.forEach((t) => parts.push(formatCompact(t)));
   }
@@ -138,13 +160,31 @@ export async function runSeeTasksTool(args: SeeTasksArgs): Promise<SeeTasksResul
     isEmpty,
     content,
     suggestRetry: isEmpty
-      ? args.isBlocked
-        ? "No blocked tasks were found. Should we try a broader search?"
-        : args.status
-        ? `No tasks with status "${args.status}" were found. Should we try a different status or a broader search?`
-        : args.query
-        ? `No tasks matching "${args.query}" were found. Should we try a different keyword?`
-        : "The task board appears empty. Should we check archived tasks or try a different search?"
+      ? `No tasks matched these filters: ${filterDescription}. Should we remove one filter or try a broader search?`
       : undefined,
   };
+}
+
+function matchingIds<T extends { id: number; name?: string; displayName?: string }>(
+  rows: T[],
+  query: string,
+  field: "name" | "displayName" = "name",
+): number[] {
+  const normalized = query.trim().toLowerCase();
+  return rows
+    .filter(row => (row[field] ?? "").toLowerCase().includes(normalized))
+    .map(row => row.id);
+}
+
+function describeFilters(args: SeeTasksArgs): string {
+  const filters = [
+    args.status ? `status=${args.status}` : "",
+    args.isBlocked !== undefined ? `blocked=${args.isBlocked}` : "",
+    args.person ? `person="${args.person}"` : "",
+    args.project ? `project="${args.project}"` : "",
+    args.milestone ? `milestone="${args.milestone}"` : "",
+    args.currentSprint ? "current sprint" : args.sprintNumber ? `sprint ${args.sprintNumber}` : "",
+    args.query ? `text="${args.query}"` : "",
+  ].filter(Boolean);
+  return filters.length > 0 ? `active tasks; ${filters.join(", ")}` : "all active tasks";
 }

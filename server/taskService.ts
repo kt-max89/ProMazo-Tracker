@@ -1,4 +1,4 @@
-import { eq, and, or, ilike, inArray } from "drizzle-orm";
+import { eq, and, or, ilike, inArray, type SQL } from "drizzle-orm";
 import { db } from "./db";
 import { tasksTable, taskAssigneesTable } from "./schema";
 import { taskStatuses, type Task, type InsertTask, type TaskStatus } from "@shared/schema";
@@ -6,7 +6,16 @@ import { getProject } from "./projectService";
 import { getMilestone } from "./milestoneService";
 import { getSprint, getTrackerSettings } from "./sprintService";
 
-export type TaskFilters = { archived?: boolean };
+export type TaskFilters = {
+  archived?: boolean;
+  query?: string;
+  status?: TaskStatus;
+  isBlocked?: boolean;
+  projectIds?: number[];
+  milestoneIds?: number[];
+  sprintIds?: number[];
+  assigneeIds?: number[];
+};
 
 const VALID_SIZES = ["XXS", "XS", "S", "M", "L", "XL", "XXL"] as const;
 type TaskSize = (typeof VALID_SIZES)[number];
@@ -75,11 +84,59 @@ async function mapTasksWithAssignees(rows: (typeof tasksTable.$inferSelect)[]): 
 // ─── CRUD ─────────────────────────────────────────────────────────────────────
 
 export async function listTasks(filters: TaskFilters = {}): Promise<Task[]> {
-  const archived = filters.archived ?? false;
+  return queryTasks(filters);
+}
+
+/**
+ * Applies every supplied task filter as an intersection. Keeping this query in
+ * the service layer prevents chat-specific lookup rules from changing the
+ * behavior of the board's existing CRUD methods.
+ */
+export async function queryTasks(filters: TaskFilters = {}): Promise<Task[]> {
+  const conditions: SQL[] = [
+    eq(tasksTable.isArchived, filters.archived ?? false),
+  ];
+
+  if (filters.status) conditions.push(eq(tasksTable.status, filters.status));
+  if (filters.isBlocked !== undefined) {
+    conditions.push(eq(tasksTable.isBlocked, filters.isBlocked));
+  }
+  if (filters.query?.trim()) {
+    const query = `%${filters.query.trim()}%`;
+    conditions.push(
+      or(
+        ilike(tasksTable.title, query),
+        ilike(tasksTable.description, query),
+      )!,
+    );
+  }
+  if (filters.projectIds) {
+    if (filters.projectIds.length === 0) return [];
+    conditions.push(inArray(tasksTable.projectId, filters.projectIds));
+  }
+  if (filters.milestoneIds) {
+    if (filters.milestoneIds.length === 0) return [];
+    conditions.push(inArray(tasksTable.milestoneId, filters.milestoneIds));
+  }
+  if (filters.sprintIds) {
+    if (filters.sprintIds.length === 0) return [];
+    conditions.push(inArray(tasksTable.sprintId, filters.sprintIds));
+  }
+  if (filters.assigneeIds) {
+    if (filters.assigneeIds.length === 0) return [];
+    const assignedRows = await db
+      .select({ taskId: taskAssigneesTable.taskId })
+      .from(taskAssigneesTable)
+      .where(inArray(taskAssigneesTable.userId, filters.assigneeIds));
+    const assignedTaskIds = Array.from(new Set(assignedRows.map(row => row.taskId)));
+    if (assignedTaskIds.length === 0) return [];
+    conditions.push(inArray(tasksTable.id, assignedTaskIds));
+  }
+
   const rows = await db
     .select()
     .from(tasksTable)
-    .where(eq(tasksTable.isArchived, archived));
+    .where(and(...conditions));
   return mapTasksWithAssignees(rows);
 }
 

@@ -1,13 +1,15 @@
 import OpenAI from "openai";
-import { selectToolIntent } from "./toolIntentSelector";
+import { selectToolIntents, type ToolCall } from "./toolIntentSelector";
 import { runSeeTasksTool } from "./seeTasksTool";
 import { runReadDocsTool } from "./readDocsTool";
 import { runSeeProjectsTool } from "./seeProjectsTool";
+import { runSeeTeamTool } from "./seeTeamTool";
 import { buildPrompt, type ToolResult, type HistoryMessage } from "./promptBuilder";
 import { validateProposal, type ValidatedProposal } from "./proposalSchema";
 import type { DocChunk } from "./documentRetrievalService";
 import type { IStorage } from "./storage";
 import type { User } from "@shared/schema";
+import { settleReadToolCalls } from "./readToolExecution";
 
 if (!process.env.OPENAI_API_KEY) {
   console.warn("OPENAI_API_KEY not set - AI features will not work");
@@ -73,43 +75,38 @@ export async function* handleChatMessage(
     history = selected.map((m) => ({ role: m.role as "user" | "assistant", content: m.content }));
   }
 
-  // Step 1: one LLM call to select intent — SEE_TASKS, READ_DOCS, or NO_TOOL
-  const intentResult = await selectToolIntent(message);
-  yield { type: "route", data: intentResult.intent };
+  // Step 1: select a small, bounded set of compatible read-only tools. Recent
+  // history lets the router resolve follow-ups without expanding prompt cost.
+  const toolCalls = await selectToolIntents(message, history);
+  if (toolCalls.length === 0) {
+    yield { type: "route", data: "NO_TOOL" };
+  } else {
+    for (const call of toolCalls) yield { type: "route", data: call.intent };
+  }
 
-  let toolResult: ToolResult | undefined;
+  const toolResults: ToolResult[] = [];
   let docChunks: DocChunk[] = [];
 
-  // Step 2: call exactly one tool once, or skip entirely — enforced structurally
-  if (intentResult.intent === "SEE_TASKS") {
-    const result = await runSeeTasksTool(intentResult.args);
-    toolResult = {
-      type: "tasks",
-      content: result.content,
-      isEmpty: result.isEmpty,
-      suggestRetry: result.suggestRetry,
-    };
-  } else if (intentResult.intent === "SEE_PROJECTS") {
-    const result = await runSeeProjectsTool(intentResult.args);
-    toolResult = {
-      type: "tasks",
-      content: result.content,
-      isEmpty: result.isEmpty,
-      suggestRetry: result.suggestRetry,
-    };
-  } else if (intentResult.intent === "READ_DOCS") {
-    const result = await runReadDocsTool(intentResult.args, user);
-    docChunks = result.chunks;
-    toolResult = {
-      type: "docs",
-      content: result.contextText,
-      isEmpty: result.isEmpty,
-      suggestRetry: result.suggestRetry,
-    };
+  // Step 2: execute independent reads concurrently. A rejected source becomes a
+  // typed partial result instead of erasing successful sources.
+  const settled = await settleReadToolCalls(toolCalls, call =>
+    executeReadTool(call, user, storage),
+  );
+  for (const outcome of settled) {
+    if (outcome.status === "rejected") {
+      toolResults.push({
+        type: resultTypeForIntent(outcome.call.intent),
+        content: "",
+        isEmpty: true,
+        error: outcome.error,
+      });
+      continue;
+    }
+    toolResults.push(outcome.value.toolResult);
+    docChunks.push(...outcome.value.docChunks);
   }
-  // NO_TOOL: toolResult stays undefined, no retrieval runs
 
-  // Emit citations (empty array for task/no-tool paths)
+  // Emit citations (empty array when document retrieval was not selected)
   yield { type: "citations", data: docChunks };
 
   // Persist doc citations to DB
@@ -149,7 +146,7 @@ export async function* handleChatMessage(
   // Tools are intentionally omitted — the model structurally cannot call another tool.
   const messages = buildPrompt({
     message,
-    toolResult,
+    toolResults,
     history,
     historySummary,
     projectsContext,
@@ -229,4 +226,50 @@ export async function* handleChatMessage(
   if (proposal) {
     yield { type: "task_proposal", data: proposal };
   }
+}
+
+type ExecutedReadTool = {
+  toolResult: ToolResult;
+  docChunks: DocChunk[];
+};
+
+async function executeReadTool(
+  call: ToolCall,
+  user: User,
+  storage: IStorage,
+): Promise<ExecutedReadTool> {
+  if (call.intent === "SEE_TASKS") {
+    const result = await runSeeTasksTool(call.args);
+    return {
+      toolResult: { type: "tasks", content: result.content, isEmpty: result.isEmpty, suggestRetry: result.suggestRetry },
+      docChunks: [],
+    };
+  }
+  if (call.intent === "SEE_PROJECTS") {
+    const result = await runSeeProjectsTool(call.args);
+    return {
+      toolResult: { type: "projects", content: result.content, isEmpty: result.isEmpty, suggestRetry: result.suggestRetry },
+      docChunks: [],
+    };
+  }
+  if (call.intent === "SEE_TEAM") {
+    const result = await runSeeTeamTool(call.args, storage);
+    return {
+      toolResult: { type: "team", content: result.content, isEmpty: result.isEmpty, suggestRetry: result.suggestRetry },
+      docChunks: [],
+    };
+  }
+
+  const result = await runReadDocsTool(call.args, user);
+  return {
+    toolResult: { type: "docs", content: result.contextText, isEmpty: result.isEmpty, suggestRetry: result.suggestRetry },
+    docChunks: result.chunks,
+  };
+}
+
+function resultTypeForIntent(intent: ToolCall["intent"]): ToolResult["type"] {
+  if (intent === "SEE_TASKS") return "tasks";
+  if (intent === "SEE_PROJECTS") return "projects";
+  if (intent === "SEE_TEAM") return "team";
+  return "docs";
 }

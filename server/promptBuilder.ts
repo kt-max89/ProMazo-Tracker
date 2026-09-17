@@ -1,27 +1,30 @@
 import type OpenAI from "openai";
 
-const SYSTEM_PROMPT = `You are an internal assistant for the ProMazo national team. ProMazo is a company that connects top University talent with big companies. You help plan, ideate, and track tasks.
+const SYSTEM_PROMPT = `You are an internal project-management and team-support assistant for the ProMazo national team. ProMazo connects top university talent with big companies. You help the team understand work, projects, people, sprints, updates, reflections, and relevant internal documents.
 
 Follow these rules strictly:
 
-1. Answer using only the context provided in this prompt. Do NOT use outside knowledge or assumptions.
-2. Never fabricate facts, task names, statuses, or document content.
-3. Do not reveal or speculate about documents that are not included in the context.
-4. Never mention system architecture, permissions, or internal restrictions unless they appear in the context.
-5. If no context is provided, answer conversationally based on the question alone.
+1. For factual claims about the team's work, use only the live data or document evidence included in this prompt. Do not use outside knowledge or assumptions.
+2. Never fabricate facts, task names, statuses, people, updates, reflections, or document content.
+3. Keep source boundaries clear: task, project, team, and sprint results are live tracker data; document results are retrieved evidence.
+4. Do not reveal or speculate about documents that are not included in the context.
+5. If no data lookup was needed, answer conversationally and helpfully based on the user's request.
 
-Empty or weak results rule:
-- If the tool result is marked as empty or insufficient, do NOT invent an answer.
-- Acknowledge clearly what was searched and that nothing useful was found.
-- End your response with the exact retry suggestion provided, verbatim.
+Empty, weak, or partial results:
+- Treat each source independently. Use useful results even when another source is empty or unavailable.
+- Clearly say which requested source was empty or unavailable; do not turn a partial failure into a claim that no information exists.
+- If every requested source is empty or unavailable, acknowledge what was searched and do not invent an answer.
+- Include each provided retry suggestion verbatim when it is relevant to the user's unanswered request.
 
 Citation rules (when document context is present):
 - Cite ONLY sources that directly support the final answer.
 - Do NOT cite sources that are merely related or partially relevant.
 - Prefer the smallest number of citations necessary.
 
-Task context rules (when task context is present):
+Live data rules:
 - Use task context to answer operational questions about task status, assignments, and blockers.
+- Use project context for project and milestone facts.
+- Use team context for roster, Team Overview updates, sprint settings, and reflections.
 - Do not infer task state from documents if task context already has the answer.
 
 Task proposal rules:
@@ -80,10 +83,11 @@ Answer content format (inside the "answer" string):
 - Include Sources section only when citing documents directly`;
 
 export type ToolResult = {
-  type: "tasks" | "docs";
+  type: "tasks" | "projects" | "team" | "docs";
   content: string;
   isEmpty: boolean;
   suggestRetry?: string;
+  error?: string;
 };
 
 export type HistoryMessage = {
@@ -93,7 +97,7 @@ export type HistoryMessage = {
 
 export type PromptInput = {
   message: string;
-  toolResult?: ToolResult;
+  toolResults?: ToolResult[];
   history?: HistoryMessage[];
   historySummary?: string;
   projectsContext?: string;
@@ -104,30 +108,33 @@ export type PromptInput = {
 export function buildPrompt(
   input: PromptInput
 ): OpenAI.Chat.Completions.ChatCompletionMessageParam[] {
-  const { message, toolResult, history, historySummary, projectsContext, currentUserName, tomorrowDate } = input;
+  const { message, toolResults, history, historySummary, projectsContext, currentUserName, tomorrowDate } = input;
 
   let userContent: string;
 
-  if (!toolResult) {
+  if (!toolResults || toolResults.length === 0) {
     userContent = `Question: ${message}`;
-  } else if (toolResult.isEmpty) {
-    const section = toolResult.type === "tasks" ? "TASK BOARD" : "DOCUMENTS";
-    userContent = [
-      `=== ${section} SEARCH RESULT ===`,
-      `The search returned no useful results.`,
-      toolResult.suggestRetry ? `Retry suggestion: ${toolResult.suggestRetry}` : "",
-      "",
-      "---",
-      "",
-      `Question: ${message}`,
-      "",
-      "Important: Since no results were found, acknowledge this clearly and use the retry suggestion above verbatim at the end of your response.",
-    ]
-      .filter(Boolean)
-      .join("\n");
   } else {
-    const section = toolResult.type === "tasks" ? "TASK BOARD (live data)" : "DOCUMENT CONTEXT";
-    userContent = `=== ${section} ===\n${toolResult.content}\n\n---\n\nQuestion: ${message}`;
+    const sections = toolResults.map(result => {
+      const section = {
+        tasks: "TASK BOARD (live data)",
+        projects: "PROJECTS AND MILESTONES (live data)",
+        team: "TEAM AND SPRINT CONTEXT (live data)",
+        docs: "DOCUMENT CONTEXT (retrieved evidence)",
+      }[result.type];
+      if (result.error) {
+        return `=== ${section} ===\nSource unavailable: ${result.error}`;
+      }
+      if (result.isEmpty) {
+        return [
+          `=== ${section} ===`,
+          "The search returned no useful results.",
+          result.suggestRetry ? `Retry suggestion: ${result.suggestRetry}` : "",
+        ].filter(Boolean).join("\n");
+      }
+      return `=== ${section} ===\n${result.content}`;
+    });
+    userContent = `${sections.join("\n\n---\n\n")}\n\n---\n\nQuestion: ${message}`;
   }
 
   const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [

@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { useAuth } from "@/lib/auth";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { Send, FileText, BookOpen, LogOut, Zap, Settings, Loader2, Sun, Moon, PanelLeft, ListTodo, PlusCircle, X, ChevronLeft, ChevronRight } from "lucide-react";
+import { Send, FileText, BookOpen, LogOut, Zap, Settings, Loader2, Sun, Moon, PanelLeft, ListTodo, PlusCircle, X, ChevronLeft, ChevronRight, FolderKanban, Users } from "lucide-react";
 import { useLocation, Link } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 import { useTheme } from "@/components/theme-provider";
@@ -18,13 +18,13 @@ type Citation = {
   similarity: number;
 };
 
-type ToolUsed = "SEE_TASKS" | "READ_DOCS" | "NO_TOOL";
+type ToolUsed = "SEE_TASKS" | "READ_DOCS" | "SEE_PROJECTS" | "SEE_TEAM" | "NO_TOOL";
 
 type Message = {
   role: "user" | "assistant";
   content: string;
   citations?: Citation[];
-  toolUsed?: ToolUsed;
+  toolsUsed?: ToolUsed[];
 };
 
 type ChatSession = {
@@ -472,7 +472,12 @@ export default function ChatPage() {
               const toolUsed = parsed.data as ToolUsed;
               setMessages(prev => {
                 const updated = [...prev];
-                updated[updated.length - 1] = { ...updated[updated.length - 1], toolUsed };
+                const current = updated[updated.length - 1];
+                const toolsUsed = current.toolsUsed ?? [];
+                updated[updated.length - 1] = {
+                  ...current,
+                  toolsUsed: toolsUsed.includes(toolUsed) ? toolsUsed : [...toolsUsed, toolUsed],
+                };
                 return updated;
               });
             } else if (parsed.type === "citations") {
@@ -640,8 +645,7 @@ export default function ChatPage() {
                 <Zap className="w-12 h-12 mx-auto text-muted-foreground/30 mb-4" />
                 <h2 className="text-xl font-medium mb-2" data-testid="text-welcome">Ask a question</h2>
                 <p className="text-muted-foreground text-sm max-w-md mx-auto">
-                  Your questions will be answered using {documents?.length ?? 0} accessible documents.
-                  Answers include source citations.
+                  Get help with tasks, projects, teammates, sprints, updates, reflections, and relevant documents.
                 </p>
               </div>
             )}
@@ -656,16 +660,20 @@ export default function ChatPage() {
                     <p className="text-sm whitespace-pre-wrap" data-testid={`text-user-message-${i}`}>{msg.content}</p>
                   ) : (
                     <>
-                      {(msg.toolUsed === "SEE_TASKS" || msg.toolUsed === "READ_DOCS") && (
+                       {msg.toolsUsed?.some(tool => tool !== "NO_TOOL") && (
                         <div className="flex items-center gap-1.5 mb-1 ml-1" data-testid={`tool-indicator-${i}`}>
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-muted text-muted-foreground/70 text-[11px]">
-                            {msg.toolUsed === "SEE_TASKS" ? (
-                              <ListTodo className="w-3 h-3" />
-                            ) : (
-                              <FileText className="w-3 h-3" />
-                            )}
-                            {msg.toolUsed === "SEE_TASKS" ? "Task Board" : "Documents"}
-                          </span>
+                           {msg.toolsUsed.filter(tool => tool !== "NO_TOOL").map(tool => (
+                             <span key={tool} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-muted text-muted-foreground/70 text-[11px]">
+                               {tool === "SEE_TASKS" && <ListTodo className="w-3 h-3" />}
+                               {tool === "SEE_PROJECTS" && <FolderKanban className="w-3 h-3" />}
+                               {tool === "SEE_TEAM" && <Users className="w-3 h-3" />}
+                               {tool === "READ_DOCS" && <FileText className="w-3 h-3" />}
+                               {tool === "SEE_TASKS" && "Task Board"}
+                               {tool === "SEE_PROJECTS" && "Projects"}
+                               {tool === "SEE_TEAM" && "Team"}
+                               {tool === "READ_DOCS" && "Documents"}
+                             </span>
+                           ))}
                         </div>
                       )}
                       <div className="bg-card border rounded-2xl rounded-bl-md px-4 py-3">
@@ -713,7 +721,7 @@ export default function ChatPage() {
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="Ask a question about your documents..."
+              placeholder="Ask about tasks, projects, people, sprints, or documents..."
               rows={1}
               className="w-full resize-none rounded-xl border border-input bg-card px-4 py-3 pr-12 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
               disabled={isStreaming}
@@ -728,7 +736,7 @@ export default function ChatPage() {
             </button>
           </form>
           <p className="text-center text-[11px] text-muted-foreground mt-2">
-            Answers are generated from your organization's documents. No data is used for model training.
+            Answers may use live workspace data and relevant documents. Verify important decisions with your team.
           </p>
         </div>
       </div>

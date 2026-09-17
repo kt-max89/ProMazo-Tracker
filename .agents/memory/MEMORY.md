@@ -4,3 +4,4 @@
 - [Pre-existing table schema mismatches](postgres-migration.md) — prior task-agent merges created tables with text timestamps and TEXT[] arrays; required ALTER TABLE to fix before Drizzle could work.
 - [User-referencing FK delete rules](user-delete-fk-rules.md) — set-null/cascade rules needed on tasks/task_assignees/chat_sessions/citations so deleting a user doesn't error; drizzle-kit push is unreliable for FK delete-rule changes.
 - [Drizzle table rename prompts](drizzle-rename-prompts.md) — review schema-push rename guesses carefully; unrelated existing tables can be offered as a new table's predecessor.
+- [Chat task-proposal boundary](chat-task-proposal-boundary.md) — improve read-only chat capabilities without changing proposal JSON, defaults, event order, approval, or review UI.

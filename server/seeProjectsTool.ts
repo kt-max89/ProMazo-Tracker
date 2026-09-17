@@ -1,11 +1,12 @@
 import { listProjects } from "./projectService";
-import { listMilestonesByProject } from "./milestoneService";
+import { listMilestones } from "./milestoneService";
 import { listTasks } from "./taskService";
 import type { Project } from "@shared/schema";
 
 export type SeeProjectsArgs = {
   projectId?: number;
   query?: string;
+  limit?: number;
 };
 
 export type SeeProjectsResult = {
@@ -15,21 +16,28 @@ export type SeeProjectsResult = {
 };
 
 export async function runSeeProjectsTool(args: SeeProjectsArgs): Promise<SeeProjectsResult> {
-  const allProjects = await listProjects();
+  const [allProjects, allMilestones, allTasks] = await Promise.all([
+    listProjects(),
+    listMilestones(),
+    listTasks({ archived: false }),
+  ]);
 
   // Filter by projectId if provided
   let projects: Project[];
+  projects = allProjects;
   if (args.projectId != null) {
-    projects = allProjects.filter((p) => p.id === args.projectId);
-  } else if (args.query) {
+    projects = projects.filter((p) => p.id === args.projectId);
+  }
+  if (args.query) {
     const q = args.query.toLowerCase();
-    projects = allProjects.filter(
+    projects = projects.filter(
       (p) =>
         p.name.toLowerCase().includes(q) ||
         (p.description ?? "").toLowerCase().includes(q)
     );
-  } else {
-    projects = allProjects;
+  }
+  if (args.limit != null) {
+    projects = projects.slice(0, Math.min(Math.max(1, args.limit), 10));
   }
 
   if (projects.length === 0) {
@@ -42,8 +50,7 @@ export async function runSeeProjectsTool(args: SeeProjectsArgs): Promise<SeeProj
     return { content: "No projects found.", isEmpty, suggestRetry };
   }
 
-  // Batch-fetch all active tasks and group by projectId
-  const allTasks = await listTasks({ archived: false });
+  // Group the already-batched active tasks and milestones by project.
   const tasksByProject = new Map<number, { not_started: number; in_progress: number; needs_review: number; done: number }>();
   for (const t of allTasks) {
     if (t.projectId == null) continue;
@@ -52,11 +59,17 @@ export async function runSeeProjectsTool(args: SeeProjectsArgs): Promise<SeeProj
     if (s in entry) entry[s]++;
     tasksByProject.set(t.projectId, entry);
   }
+  const milestonesByProject = new Map<number, typeof allMilestones>();
+  for (const milestone of allMilestones) {
+    const group = milestonesByProject.get(milestone.projectId) ?? [];
+    group.push(milestone);
+    milestonesByProject.set(milestone.projectId, group);
+  }
 
   const parts: string[] = [`Projects (${projects.length} total):\n`];
 
   for (const project of projects) {
-    const milestones = await listMilestonesByProject(project.id);
+    const milestones = milestonesByProject.get(project.id) ?? [];
     const counts = tasksByProject.get(project.id) ?? { not_started: 0, in_progress: 0, needs_review: 0, done: 0 };
     const totalTasks = Object.values(counts).reduce((a, b) => a + b, 0);
 
