@@ -149,6 +149,7 @@ export function TaskFormDialog({
       apiRequest("PATCH", `/api/tasks/${task!.id}`, data).then(r => r.json()),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/tasks"] });
+      if (task) queryClient.invalidateQueries({ queryKey: ["/api/tasks", task.id, "activity"] });
       toast({ title: "Task updated" });
       onClose();
     },
@@ -162,6 +163,7 @@ export function TaskFormDialog({
       apiRequest("POST", `/api/tasks/${task!.id}/archive`).then(r => r.json()),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/tasks"] });
+      if (task) queryClient.invalidateQueries({ queryKey: ["/api/tasks", task.id, "activity"] });
       toast({ title: "Task archived" });
       onClose();
     },

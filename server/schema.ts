@@ -13,6 +13,7 @@ import {
   date,
   jsonb,
   check,
+  index,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 
@@ -238,6 +239,26 @@ export const taskCommentsTable = pgTable("task_comments", {
     .notNull()
     .defaultNow(),
 });
+
+// ─── Task activity ────────────────────────────────────────────────────────────
+
+export const taskActivityTable = pgTable(
+  "task_activity",
+  {
+    id: serial("id").primaryKey(),
+    taskId: integer("task_id")
+      .notNull()
+      .references(() => tasksTable.id, { onDelete: "cascade" }),
+    actorId: integer("actor_id").references(() => usersTable.id, { onDelete: "set null" }),
+    actorName: text("actor_name").notNull(),
+    eventType: text("event_type").notNull(),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  table => [
+    index("task_activity_task_created_idx").on(table.taskId, table.createdAt, table.id),
+  ],
+);
 
 // ─── Team posts ───────────────────────────────────────────────────────────────
 

@@ -8,6 +8,7 @@ import { setupAuth, requireAuth, requireAdmin } from "./auth";
 import { registerSchema, loginSchema, insertTaskSchema, updateTaskSchema, insertProjectSchema, updateProjectSchema, insertMilestoneSchema, updateMilestoneSchema, insertTaskCommentSchema, insertTeamPostSchema, insertSprintReflectionSchema } from "@shared/schema";
 import { listTasks, getTask, createTask, updateTask, archiveTask, restoreTask } from "./taskService";
 import { listCommentsByTaskId, createComment } from "./commentService";
+import { listTaskActivity } from "./taskActivityService";
 import { createTeamPost, deleteOwnTeamPost, listTeamPosts, toggleTeamPostPin } from "./teamPostService";
 import { listProjects, getProject, createProject, updateProject } from "./projectService";
 import { listMilestones, listMilestonesByProject, getMilestone, createMilestone, updateMilestone, deleteMilestone } from "./milestoneService";
@@ -929,7 +930,7 @@ export async function registerRoutes(
       if (!parsed.success) {
         return res.status(400).json({ message: parsed.error.errors[0].message });
       }
-      const task = await updateTask(id, parsed.data);
+      const task = await updateTask(id, parsed.data, req.user!.id);
       return res.json(task);
     } catch (err: any) {
       return res.status(400).json({ message: err.message });
@@ -940,7 +941,7 @@ export async function registerRoutes(
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) return res.status(400).json({ message: "Invalid task id" });
-      const task = await archiveTask(id);
+      const task = await archiveTask(id, req.user!.id);
       return res.json(task);
     } catch (err: any) {
       return res.status(400).json({ message: err.message });
@@ -951,7 +952,7 @@ export async function registerRoutes(
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) return res.status(400).json({ message: "Invalid task id" });
-      const task = await restoreTask(id);
+      const task = await restoreTask(id, req.user!.id);
       return res.json(task);
     } catch (err: any) {
       return res.status(400).json({ message: err.message });
@@ -959,6 +960,18 @@ export async function registerRoutes(
   });
 
   // Task comments
+  app.get("/api/tasks/:id/activity", requireAuth, async (req, res) => {
+    try {
+      const id = parseInt(String(req.params.id));
+      if (isNaN(id)) return res.status(400).json({ message: "Invalid task id" });
+      const activity = await listTaskActivity(id);
+      if (!activity) return res.status(404).json({ message: "Task not found" });
+      return res.json(activity);
+    } catch (err: any) {
+      return res.status(500).json({ message: err.message });
+    }
+  });
+
   app.get("/api/tasks/:id/comments", requireAuth, async (req, res) => {
     try {
       const id = parseInt(req.params.id);

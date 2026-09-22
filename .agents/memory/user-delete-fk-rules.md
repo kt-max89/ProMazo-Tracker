@@ -10,3 +10,9 @@ Current intended delete rules for all FKs pointing at `users.id`: `SET NULL` for
 **Why:** these FKs were originally `NO ACTION`, which blocked deleting any user with related data anywhere in the chain.
 
 **How to apply:** `drizzle-kit push` prompted destructively/interactively for this schema and does not reliably alter existing FK delete rules — apply `ALTER TABLE ... DROP CONSTRAINT` + `ADD CONSTRAINT ... ON DELETE ...` directly via SQL (see `drizzle/0001_user_delete_fk_rules.sql`), then keep `references()` in `server/schema.ts` in sync. `documents.uploaded_by` remains `NO ACTION` by design (documents/uploads are a separate concern).
+
+Startup repairs must inspect `pg_constraint.confdeltype` and only run `ALTER TABLE` when the rule is wrong. Do not call startup DDL from database tests that run in parallel with table-access tests; PostgreSQL can deadlock on their conflicting relation locks.
+
+**Why:** An unconditional foreign-key repair in a parallel test run deadlocked with another test selecting and inserting task data.
+
+**How to apply:** Keep startup schema repairs idempotent at the constraint-definition level, and let the normal application startup establish schema before service-level tests execute.

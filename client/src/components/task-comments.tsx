@@ -31,6 +31,7 @@ export function TaskComments({ taskId }: { taskId: number }) {
     onSuccess: () => {
       setBody("");
       queryClient.invalidateQueries({ queryKey: ["/api/tasks", taskId, "comments"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/tasks", taskId, "activity"] });
     },
     onError: (err: any) => {
       toast({ title: "Error", description: err.message, variant: "destructive" });

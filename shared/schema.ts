@@ -256,6 +256,29 @@ export type InsertTaskComment = {
   body: string;
 };
 
+export const taskActivityEventTypes = [
+  "created",
+  "status_changed",
+  "assignees_changed",
+  "commented",
+  "updated",
+  "archived",
+  "restored",
+] as const;
+
+export type TaskActivityEventType = (typeof taskActivityEventTypes)[number];
+
+export type TaskActivity = {
+  id: number | string;
+  taskId: number;
+  actorId: number | null;
+  actorName: string;
+  eventType: TaskActivityEventType;
+  metadata: Record<string, unknown>;
+  createdAt: string;
+  synthetic?: boolean;
+};
+
 export const insertTaskCommentSchema = z.object({
   body: z.string().min(1, "Comment cannot be empty"),
 });

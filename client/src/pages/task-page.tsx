@@ -41,6 +41,7 @@ import {
 } from "@/components/ui/form";
 import { MultiUserSelect } from "@/components/multi-user-select";
 import { TaskComments } from "@/components/task-comments";
+import { TaskActivity } from "@/components/task-activity";
 
 type AppUser = { id: number; displayName: string; email: string };
 
@@ -158,6 +159,7 @@ export default function TaskPage() {
     onSuccess: updated => {
       queryClient.setQueryData(["/api/tasks", taskId], updated);
       queryClient.invalidateQueries({ queryKey: ["/api/tasks"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/tasks", taskId, "activity"] });
       form.reset(valuesFromTask(updated));
       setEditingDescription(false);
       toast({ title: "Task updated" });
@@ -175,6 +177,7 @@ export default function TaskPage() {
     onSuccess: updated => {
       queryClient.setQueryData(["/api/tasks", taskId], updated);
       queryClient.invalidateQueries({ queryKey: ["/api/tasks"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/tasks", taskId, "activity"] });
       form.reset(valuesFromTask(updated));
       toast({ title: updated.isArchived ? "Task archived" : "Task restored" });
     },
@@ -538,6 +541,9 @@ export default function TaskPage() {
 
         <section className="mt-10 pt-8 border-t max-w-4xl">
           <TaskComments taskId={task.id} />
+        </section>
+        <section className="mt-10 pt-8 border-t max-w-4xl">
+          <TaskActivity taskId={task.id} />
         </section>
       </main>
     </div>

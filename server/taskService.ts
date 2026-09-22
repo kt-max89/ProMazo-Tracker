@@ -5,6 +5,12 @@ import { taskStatuses, type Task, type InsertTask, type TaskStatus } from "@shar
 import { getProject } from "./projectService";
 import { getMilestone } from "./milestoneService";
 import { getSprint, getTrackerSettings } from "./sprintService";
+import {
+  getActorName,
+  recordTaskActivity,
+  resolveTaskReferenceNames,
+  resolveUserNames,
+} from "./taskActivityService";
 
 export type TaskFilters = {
   archived?: boolean;
@@ -68,11 +74,11 @@ async function getAssigneeIds(taskId: number): Promise<number[]> {
   return map.get(taskId) ?? [];
 }
 
-async function setAssignees(taskId: number, assigneeIds: number[]): Promise<void> {
-  await db.delete(taskAssigneesTable).where(eq(taskAssigneesTable.taskId, taskId));
+async function setAssignees(taskId: number, assigneeIds: number[], executor: any = db): Promise<void> {
+  await executor.delete(taskAssigneesTable).where(eq(taskAssigneesTable.taskId, taskId));
   const unique = Array.from(new Set(assigneeIds));
   if (unique.length > 0) {
-    await db.insert(taskAssigneesTable).values(unique.map((userId) => ({ taskId, userId })));
+    await executor.insert(taskAssigneesTable).values(unique.map((userId) => ({ taskId, userId })));
   }
 }
 
@@ -182,31 +188,49 @@ export async function createTask(input: InsertTask): Promise<Task> {
     }
   }
 
-  const [row] = await db
-    .insert(tasksTable)
-    .values({
-      title: input.title.trim(),
-      description: input.description ?? null,
-      status: (input.status as TaskStatus) ?? "not_started",
-      isBlocked: input.isBlocked ?? false,
-      blockedReason: input.isBlocked ? (input.blockedReason ?? null) : null,
-      size: input.size ?? null,
-      isArchived: false,
-      createdBy: input.createdBy ?? null,
-      dueDate: input.dueDate ?? null,
-      projectId: input.projectId ?? null,
-      milestoneId: input.milestoneId ?? null,
-      sprintId,
-    })
-    .returning();
+  const actorName = await getActorName(input.createdBy);
+  return db.transaction(async tx => {
+    const [row] = await tx
+      .insert(tasksTable)
+      .values({
+        title: input.title.trim(),
+        description: input.description ?? null,
+        status: (input.status as TaskStatus) ?? "not_started",
+        isBlocked: input.isBlocked ?? false,
+        blockedReason: input.isBlocked ? (input.blockedReason ?? null) : null,
+        size: input.size ?? null,
+        isArchived: false,
+        createdBy: input.createdBy ?? null,
+        dueDate: input.dueDate ?? null,
+        projectId: input.projectId ?? null,
+        milestoneId: input.milestoneId ?? null,
+        sprintId,
+      })
+      .returning();
 
-  if (input.assigneeIds && input.assigneeIds.length > 0) {
-    await setAssignees(row.id, input.assigneeIds);
-  }
-  return mapTask(row, input.assigneeIds ?? []);
+    const assigneeIds = Array.from(new Set(input.assigneeIds ?? []));
+    if (assigneeIds.length > 0) await setAssignees(row.id, assigneeIds, tx);
+    await recordTaskActivity(tx, {
+      taskId: row.id,
+      actorId: input.createdBy ?? null,
+      actorName,
+      eventType: "created",
+    });
+    if (assigneeIds.length > 0) {
+      const names = await resolveUserNames(assigneeIds);
+      await recordTaskActivity(tx, {
+        taskId: row.id,
+        actorId: input.createdBy ?? null,
+        actorName,
+        eventType: "assignees_changed",
+        metadata: { added: assigneeIds.map(userId => names.get(userId)), removed: [] },
+      });
+    }
+    return mapTask(row, assigneeIds);
+  });
 }
 
-export async function updateTask(id: number, input: Partial<InsertTask>): Promise<Task> {
+export async function updateTask(id: number, input: Partial<InsertTask>, actorId?: number | null): Promise<Task> {
   if (input.title !== undefined && !input.title?.trim()) {
     throw new Error("Title is required");
   }
@@ -275,41 +299,109 @@ export async function updateTask(id: number, input: Partial<InsertTask>): Promis
   if (input.milestoneId !== undefined) set.milestoneId = input.milestoneId;
   if (input.sprintId !== undefined) set.sprintId = input.sprintId;
 
-  const [updated] = await db
-    .update(tasksTable)
-    .set(set)
-    .where(eq(tasksTable.id, id))
-    .returning();
-  if (!updated) throw new Error("Task not found");
+  const oldAssigneeIds = await getAssigneeIds(id);
+  const assigneeIds = input.assigneeIds === undefined
+    ? oldAssigneeIds
+    : Array.from(new Set(input.assigneeIds));
+  const actorName = await getActorName(actorId);
+  const referenceNames = await resolveTaskReferenceNames({
+    projectId: input.projectId,
+    milestoneId: input.milestoneId,
+    sprintId: input.sprintId,
+  });
 
-  let assigneeIds: number[];
-  if (input.assigneeIds !== undefined) {
-    await setAssignees(id, input.assigneeIds);
-    assigneeIds = input.assigneeIds;
-  } else {
-    assigneeIds = await getAssigneeIds(id);
-  }
-  return mapTask(updated, assigneeIds);
+  return db.transaction(async tx => {
+    const [updated] = await tx
+      .update(tasksTable)
+      .set(set)
+      .where(eq(tasksTable.id, id))
+      .returning();
+    if (!updated) throw new Error("Task not found");
+
+    if (input.assigneeIds !== undefined) await setAssignees(id, assigneeIds, tx);
+
+    if (existing.status !== updated.status) {
+      await recordTaskActivity(tx, {
+        taskId: id, actorId: actorId ?? null, actorName, eventType: "status_changed",
+        metadata: { from: existing.status, to: updated.status },
+      });
+    }
+
+    const oldSet = new Set(oldAssigneeIds);
+    const newSet = new Set(assigneeIds);
+    const addedIds = assigneeIds.filter(userId => !oldSet.has(userId));
+    const removedIds = oldAssigneeIds.filter(userId => !newSet.has(userId));
+    if (addedIds.length || removedIds.length) {
+      const names = await resolveUserNames([...addedIds, ...removedIds]);
+      await recordTaskActivity(tx, {
+        taskId: id, actorId: actorId ?? null, actorName, eventType: "assignees_changed",
+        metadata: {
+          added: addedIds.map(userId => names.get(userId)),
+          removed: removedIds.map(userId => names.get(userId)),
+        },
+      });
+    }
+
+    const fieldLabels: Array<[keyof typeof existing, string]> = [
+      ["title", "title"],
+      ["description", "description"],
+      ["projectId", "project"],
+      ["milestoneId", "milestone"],
+      ["sprintId", "sprint"],
+      ["dueDate", "due date"],
+      ["size", "size"],
+      ["isBlocked", "blocked state"],
+      ["blockedReason", "blocked reason"],
+    ];
+    const fields = fieldLabels
+      .filter(([field]) => existing[field] !== updated[field])
+      .map(([field, label]) => ({
+        field: label,
+        to: field === "projectId" ? referenceNames.project
+          : field === "milestoneId" ? referenceNames.milestone
+          : field === "sprintId" ? referenceNames.sprint
+          : undefined,
+      }));
+    if (fields.length > 0) {
+      await recordTaskActivity(tx, {
+        taskId: id, actorId: actorId ?? null, actorName, eventType: "updated",
+        metadata: { fields },
+      });
+    }
+    return mapTask(updated, assigneeIds);
+  });
 }
 
-export async function archiveTask(id: number): Promise<Task> {
-  const [updated] = await db
-    .update(tasksTable)
-    .set({ isArchived: true, archivedAt: new Date(), updatedAt: new Date() })
-    .where(eq(tasksTable.id, id))
-    .returning();
-  if (!updated) throw new Error("Task not found");
-  return mapTask(updated, await getAssigneeIds(id));
+export async function archiveTask(id: number, actorId?: number | null): Promise<Task> {
+  const actorName = await getActorName(actorId);
+  return db.transaction(async tx => {
+    const [existing] = await tx.select().from(tasksTable).where(eq(tasksTable.id, id));
+    if (!existing) throw new Error("Task not found");
+    if (existing.isArchived) return mapTask(existing, await getAssigneeIds(id));
+    const [updated] = await tx
+      .update(tasksTable)
+      .set({ isArchived: true, archivedAt: new Date(), updatedAt: new Date() })
+      .where(eq(tasksTable.id, id))
+      .returning();
+    await recordTaskActivity(tx, { taskId: id, actorId: actorId ?? null, actorName, eventType: "archived" });
+    return mapTask(updated, await getAssigneeIds(id));
+  });
 }
 
-export async function restoreTask(id: number): Promise<Task> {
-  const [updated] = await db
-    .update(tasksTable)
-    .set({ isArchived: false, archivedAt: null, updatedAt: new Date() })
-    .where(eq(tasksTable.id, id))
-    .returning();
-  if (!updated) throw new Error("Task not found");
-  return mapTask(updated, await getAssigneeIds(id));
+export async function restoreTask(id: number, actorId?: number | null): Promise<Task> {
+  const actorName = await getActorName(actorId);
+  return db.transaction(async tx => {
+    const [existing] = await tx.select().from(tasksTable).where(eq(tasksTable.id, id));
+    if (!existing) throw new Error("Task not found");
+    if (!existing.isArchived) return mapTask(existing, await getAssigneeIds(id));
+    const [updated] = await tx
+      .update(tasksTable)
+      .set({ isArchived: false, archivedAt: null, updatedAt: new Date() })
+      .where(eq(tasksTable.id, id))
+      .returning();
+    await recordTaskActivity(tx, { taskId: id, actorId: actorId ?? null, actorName, eventType: "restored" });
+    return mapTask(updated, await getAssigneeIds(id));
+  });
 }
 
 // ─── Context helpers ──────────────────────────────────────────────────────────

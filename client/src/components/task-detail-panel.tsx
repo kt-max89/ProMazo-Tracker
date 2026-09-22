@@ -19,6 +19,7 @@ import {
 import ReactMarkdown from "react-markdown";
 import type { Task, Project, Milestone, TaskComment, Sprint } from "@shared/schema";
 import { TaskComments } from "@/components/task-comments";
+import { TaskActivity } from "@/components/task-activity";
 import { MultiUserSelect } from "@/components/multi-user-select";
 
 type AppUser = { id: number; displayName: string; email: string };
@@ -43,17 +44,13 @@ const taskFormSchema = z.object({
   size: z.enum(["XXS", "XS", "S", "M", "L", "XL", "XXL"]).nullable().optional(),
   dueDate: z.string().nullable().optional(),
   assigneeIds: z.array(z.number()).optional(),
-  projectId: z.number({ required_error: "Project is required" }).nullable(),
+  projectId: z.number().nullable(),
   milestoneId: z.number().nullable().optional(),
   sprintId: z.number().nullable().optional(),
 }).refine(data => {
   if (data.isBlocked && !data.blockedReason?.trim()) return false;
   return true;
 }, { message: "Blocked reason is required when the task is marked as blocked", path: ["blockedReason"] })
-  .refine(data => data.projectId != null, {
-    message: "Project is required",
-    path: ["projectId"],
-  })
   .refine(data => {
     if (data.projectId != null && data.milestoneId == null) return false;
     return true;
@@ -136,6 +133,7 @@ export function TaskDetailPanel({
       apiRequest("PATCH", `/api/tasks/${task.id}`, data).then(r => r.json()),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/tasks"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/tasks", task.id, "activity"] });
       toast({ title: "Task updated" });
       onClose();
     },
@@ -221,7 +219,7 @@ export function TaskDetailPanel({
               name="projectId"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Project <span className="text-destructive">*</span></FormLabel>
+                  <FormLabel>Project <span className="text-muted-foreground text-xs font-normal">(optional)</span></FormLabel>
                   <Select
                     onValueChange={v => {
                       field.onChange(v === "none" ? null : parseInt(v));
@@ -235,7 +233,7 @@ export function TaskDetailPanel({
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      <SelectItem value="none" disabled>Select a project</SelectItem>
+                      <SelectItem value="none">No project</SelectItem>
                       {projects.map(p => (
                         <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>
                       ))}
@@ -451,8 +449,11 @@ export function TaskDetailPanel({
                         placeholder="Optional description (supports markdown)"
                         rows={8}
                         autoFocus={false}
-                        onBlur={() => { if (field.value?.trim()) setDescEditing(false); }}
                         {...field}
+                        onBlur={() => {
+                          field.onBlur();
+                          if (field.value?.trim()) setDescEditing(false);
+                        }}
                       />
                     ) : (
                       <div
@@ -473,6 +474,9 @@ export function TaskDetailPanel({
 
         <div className="mt-6 pt-4 border-t">
           <TaskComments taskId={task.id} />
+        </div>
+        <div className="mt-6 pt-4 border-t">
+          <TaskActivity taskId={task.id} />
         </div>
       </div>
 

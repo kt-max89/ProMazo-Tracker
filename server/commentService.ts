@@ -2,6 +2,7 @@ import { asc, eq } from "drizzle-orm";
 import { db } from "./db";
 import { taskCommentsTable, tasksTable, usersTable } from "./schema";
 import type { TaskComment } from "@shared/schema";
+import { getActorName, recordTaskActivity } from "./taskActivityService";
 
 function mapComment(
   row: typeof taskCommentsTable.$inferSelect & { authorName: string | null }
@@ -44,20 +45,23 @@ export async function createComment(input: {
   const [task] = await db.select().from(tasksTable).where(eq(tasksTable.id, input.taskId));
   if (!task) throw new Error("Task not found");
 
-  const [row] = await db
-    .insert(taskCommentsTable)
-    .values({
+  const actorName = await getActorName(input.authorId);
+  return db.transaction(async tx => {
+    const [row] = await tx
+      .insert(taskCommentsTable)
+      .values({
+        taskId: input.taskId,
+        authorId: input.authorId,
+        body: input.body.trim(),
+      })
+      .returning();
+    await recordTaskActivity(tx, {
       taskId: input.taskId,
-      authorId: input.authorId,
-      body: input.body.trim(),
-    })
-    .returning();
-
-  // Fetch the author name for the newly created comment
-  const [userRow] = await db
-    .select({ displayName: usersTable.displayName })
-    .from(usersTable)
-    .where(eq(usersTable.id, input.authorId));
-
-  return mapComment({ ...row, authorName: userRow?.displayName ?? null });
+      actorId: input.authorId,
+      actorName,
+      eventType: "commented",
+      metadata: { commentId: row.id },
+    });
+    return mapComment({ ...row, authorName: actorName });
+  });
 }

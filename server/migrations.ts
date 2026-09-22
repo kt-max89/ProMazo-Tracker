@@ -140,10 +140,71 @@ async function initializeReflections(): Promise<void> {
   `);
 }
 
+async function initializeTaskActivity(): Promise<void> {
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS task_activity (
+      id SERIAL PRIMARY KEY,
+      task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+      actor_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      actor_name TEXT NOT NULL,
+      event_type TEXT NOT NULL,
+      metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `);
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS task_activity_task_created_idx
+    ON task_activity (task_id, created_at, id)
+  `);
+}
+
+async function repairTaskUserDeleteRules(): Promise<void> {
+  await db.execute(sql`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conrelid = 'tasks'::regclass
+          AND conname = 'tasks_created_by_fkey'
+          AND confdeltype = 'n'
+      ) THEN
+        ALTER TABLE tasks DROP CONSTRAINT IF EXISTS tasks_created_by_fkey;
+        ALTER TABLE tasks ADD CONSTRAINT tasks_created_by_fkey
+          FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL;
+      END IF;
+
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conrelid = 'task_assignees'::regclass
+          AND conname = 'task_assignees_user_id_fkey'
+          AND confdeltype = 'c'
+      ) THEN
+        ALTER TABLE task_assignees DROP CONSTRAINT IF EXISTS task_assignees_user_id_fkey;
+        ALTER TABLE task_assignees ADD CONSTRAINT task_assignees_user_id_fkey
+          FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE;
+      END IF;
+
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conrelid = 'task_comments'::regclass
+          AND conname = 'task_comments_author_id_fkey'
+          AND confdeltype = 'n'
+      ) THEN
+        ALTER TABLE task_comments DROP CONSTRAINT IF EXISTS task_comments_author_id_fkey;
+        ALTER TABLE task_comments ADD CONSTRAINT task_comments_author_id_fkey
+          FOREIGN KEY (author_id) REFERENCES users(id) ON DELETE SET NULL;
+      END IF;
+    END
+    $$;
+  `);
+}
+
 export async function runMigrations(): Promise<void> {
   await clearDocumentAllowedUsers();
   await initializeSprints();
   await initializeTeamPosts();
   await initializeReflections();
+  await initializeTaskActivity();
+  await repairTaskUserDeleteRules();
   await repairTaskStatusConstraint();
 }
