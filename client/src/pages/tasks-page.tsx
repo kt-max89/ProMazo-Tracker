@@ -96,9 +96,17 @@ function ArchivedTaskCard({
       className="bg-card border rounded-lg p-3 opacity-70"
     >
       <div className="flex items-start justify-between gap-2">
-        <p className="text-sm font-medium leading-snug flex-1 line-through text-muted-foreground">
-          {task.title}
-        </p>
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-medium leading-snug line-through text-muted-foreground">
+            {task.title}
+          </p>
+          <p
+            className="mt-1 text-xs font-medium text-muted-foreground"
+            data-testid={`text-archived-task-id-${task.id}`}
+          >
+            Task #{task.id}
+          </p>
+        </div>
         <Button
           variant="ghost"
           size="sm"

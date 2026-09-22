@@ -168,7 +168,12 @@ export function TaskDetailPanel({
     >
       {/* Panel header */}
       <div className="flex items-center justify-between px-5 py-3 border-b shrink-0">
-        <h2 className="font-semibold text-base">Edit task</h2>
+        <div>
+          <h2 className="font-semibold text-base">Edit task</h2>
+          <p className="text-xs text-muted-foreground" data-testid="text-task-panel-id">
+            Task #{task.id}
+          </p>
+        </div>
         <div className="flex items-center gap-1">
           {onExpand && (
             <button

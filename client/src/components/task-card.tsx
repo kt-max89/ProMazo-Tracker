@@ -117,6 +117,12 @@ export function TaskCard({
         </p>
         <Pencil className="w-3.5 h-3.5 text-muted-foreground opacity-0 group-hover:opacity-60 shrink-0 mt-0.5" />
       </div>
+      <p
+        className="mt-1 text-xs font-medium text-muted-foreground"
+        data-testid={`text-task-id-${task.id}`}
+      >
+        Task #{task.id}
+      </p>
 
       {/* Badges: project · milestone · sprint · size */}
       {(project || milestone || sprint || task.size) && (

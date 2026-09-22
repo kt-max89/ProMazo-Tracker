@@ -271,6 +271,12 @@ export default function TaskPage() {
         <Form {...form}>
           <form id="task-page-form" onSubmit={form.handleSubmit(values => updateMutation.mutate(values))}>
             <div className="max-w-4xl">
+              <p
+                className="mb-2 text-sm font-semibold text-muted-foreground"
+                data-testid="text-task-page-id"
+              >
+                Task #{task.id}
+              </p>
               <FormField
                 control={form.control}
                 name="title"
