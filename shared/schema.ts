@@ -21,7 +21,11 @@ export const userAccessActionSchema = z.object({
 }).strict();
 export type UserAccessAction = z.infer<typeof userAccessActionSchema>["action"];
 
-export type Team = { id: number; name: string; createdAt: string };
+export type Team = { id: number; name: string; socialContract: string; createdAt: string };
+
+export const updateTeamSchema = z.object({
+  socialContract: z.string().max(100_000, "Social Contract is too long"),
+}).strict();
 
 export const insertTeamSchema = z.object({
   name: z.string().trim().min(1, "Team name is required"),
@@ -95,6 +99,7 @@ export type Project = {
   description: string | null;
   timeline: string | null;
   teamId: number | null;
+  teamIds: number[];
   createdAt: string;
   updatedAt: string;
 };
@@ -104,6 +109,7 @@ export type InsertProject = {
   description?: string | null;
   timeline?: string | null;
   teamId?: number | null;
+  teamIds?: number[];
 };
 
 export type UpdateProject = Partial<InsertProject>;
@@ -114,6 +120,8 @@ export type Milestone = {
   name: string;
   description: string | null;
   timeline: string | null;
+  excludedSprintIds: number[];
+  sprintIds: number[];
   createdAt: string;
   updatedAt: string;
 };
@@ -123,6 +131,7 @@ export type InsertMilestone = {
   name: string;
   description?: string | null;
   timeline?: string | null;
+  excludedSprintIds?: number[];
 };
 
 export type UpdateMilestone = Partial<Omit<InsertMilestone, "projectId">>;
@@ -235,6 +244,7 @@ export const insertProjectSchema = z.object({
   description: z.string().nullable().optional(),
   timeline: z.string().nullable().optional(),
   teamId: z.number().int().positive().nullable().optional(),
+  teamIds: z.array(z.number().int().positive()).optional(),
 });
 
 export const updateProjectSchema = insertProjectSchema.partial();
@@ -244,6 +254,7 @@ export const insertMilestoneSchema = z.object({
   name: z.string().min(1, "Name is required"),
   description: z.string().nullable().optional(),
   timeline: z.string().nullable().optional(),
+  excludedSprintIds: z.array(z.number().int().positive()).optional(),
 });
 
 export const updateMilestoneSchema = insertMilestoneSchema.partial().omit({ projectId: true });

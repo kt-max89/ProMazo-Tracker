@@ -10,3 +10,4 @@
 - [Asynchronous Radix selects](radix-select-async.md) — empty native form events during option loading are not explicit reference-clearing actions.
 - [User access policy](user-access-policy.md) — initial admin setup is one-time; deactivation revokes sessions permanently without deleting account history.
 - [Runtime environment labels](runtime-environment.md) — a workspace can report production while connected to the managed development database; confirm the target before writes.
+- [Milestone sprint intent](milestone-sprint-policy.md) — future sprints are selected by default; explicit exclusions persist and never reschedule tasks.

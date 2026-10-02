@@ -1,16 +1,10 @@
-import { asc, eq, inArray, and, isNull } from "drizzle-orm";
+import { asc, eq, inArray, and } from "drizzle-orm";
 import { db } from "./db";
-import { teamsTable, usersTable, projectsTable } from "./schema";
+import { teamsTable, usersTable, projectsTable, projectTeamsTable } from "./schema";
 import type { Team } from "@shared/schema";
 
 function mapTeam(row: typeof teamsTable.$inferSelect): Team {
-  return { id: row.id, name: row.name, createdAt: row.createdAt instanceof Date ? row.createdAt.toISOString() : String(row.createdAt) };
-}
-
-export class TeamClaimConflict extends Error {
-  constructor() {
-    super("One or more selected projects were claimed by another team. Refresh the project selection and try again.");
-  }
+  return { id: row.id, name: row.name, socialContract: row.socialContract, createdAt: row.createdAt instanceof Date ? row.createdAt.toISOString() : String(row.createdAt) };
 }
 
 export async function listTeams(): Promise<Team[]> {
@@ -31,15 +25,40 @@ export async function createTeam(userId: number, name: string, projectIds: numbe
     if (!user) throw new Error("User not found");
     const [team] = await tx.insert(teamsTable).values({ name: name.trim() }).returning();
     if (ids.length) {
-      // Conditional UPDATE rechecks team_id after concurrent writers finish.
-      // A partial claim causes the entire transaction to roll back.
-      const claimed = await tx.update(projectsTable)
-        .set({ teamId: team.id, updatedAt: new Date() })
-        .where(and(inArray(projectsTable.id, ids), isNull(projectsTable.teamId)))
-        .returning({ id: projectsTable.id });
-      if (claimed.length !== ids.length) throw new TeamClaimConflict();
+      const projects = await tx.select().from(projectsTable).where(inArray(projectsTable.id, ids)).orderBy(asc(projectsTable.id)).for("update");
+      if (projects.length !== ids.length) throw new Error("Project not found");
+      for (const project of projects) {
+        if (project.teamId != null) await tx.insert(projectTeamsTable).values({ projectId: project.id, teamId: project.teamId }).onConflictDoNothing();
+      }
+      await tx.insert(projectTeamsTable).values(ids.map(projectId => ({ projectId, teamId: team.id }))).onConflictDoNothing();
+      for (const project of projects) {
+        if (project.teamId == null) await tx.update(projectsTable).set({ teamId: team.id, updatedAt: new Date() }).where(eq(projectsTable.id, project.id));
+      }
     }
     await tx.update(usersTable).set({ teamId: team.id }).where(eq(usersTable.id, userId));
+    return mapTeam(team);
+  });
+}
+
+export async function updateTeam(id: number, socialContract: string): Promise<Team> {
+  const [row] = await db.update(teamsTable).set({ socialContract }).where(eq(teamsTable.id, id)).returning();
+  if (!row) throw new Error("Team not found");
+  return mapTeam(row);
+}
+
+export async function changeProjectLink(teamId: number, projectId: number, add: boolean): Promise<Team> {
+  return db.transaction(async tx => {
+    const [team] = await tx.select().from(teamsTable).where(eq(teamsTable.id, teamId));
+    if (!team) throw new Error("Team not found");
+    const [project] = await tx.select().from(projectsTable).where(eq(projectsTable.id, projectId)).for("update");
+    if (!project) throw new Error("Project not found");
+    if (project.teamId != null) await tx.insert(projectTeamsTable).values({ projectId, teamId: project.teamId }).onConflictDoNothing();
+    if (add) await tx.insert(projectTeamsTable).values({ projectId, teamId }).onConflictDoNothing();
+    else await tx.delete(projectTeamsTable).where(and(eq(projectTeamsTable.projectId, projectId), eq(projectTeamsTable.teamId, teamId)));
+    const links = await tx.select().from(projectTeamsTable).where(eq(projectTeamsTable.projectId, projectId)).orderBy(asc(projectTeamsTable.teamId));
+    // Keep legacy compatibility in sync so a repeated additive backfill cannot
+    // resurrect a dropped link.
+    await tx.update(projectsTable).set({ teamId: links[0]?.teamId ?? null, updatedAt: new Date() }).where(eq(projectsTable.id, projectId));
     return mapTeam(team);
   });
 }

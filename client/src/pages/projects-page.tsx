@@ -31,7 +31,7 @@ import { TaskFormDialog } from "@/components/task-form-dialog";
 import { SearchBar } from "@/components/search-bar";
 import { SprintFilterSelect } from "@/components/sprint-filter-select";
 import { taskMatchesSprint, type SprintFilterValue } from "@/lib/sprints";
-type TeamProject = Project & { teamId: number | null };
+type SharedProject = Project & { teamIds?: number[]; teamId?: number | null };
 
 // ─── Project form ─────────────────────────────────────────────────────────────
 
@@ -42,7 +42,7 @@ const projectFormSchema = z.object({
 });
 type ProjectFormValues = z.infer<typeof projectFormSchema>;
 
-type MilestoneDraft = { name: string; description: string; timeline: string };
+type MilestoneDraft = { name: string; description: string; excludedSprintIds: number[] };
 
 function ProjectFormDialog({
   open,
@@ -55,6 +55,9 @@ function ProjectFormDialog({
 }) {
   const { toast } = useToast();
   const isEdit = !!project;
+  const { data: teams = [], isLoading: teamsLoading, isError: teamsError, refetch: refetchTeams } = useQuery<Team[]>({ queryKey: ["/api/teams"] });
+  const { data: sprints = [], isLoading: sprintsLoading, isError: sprintsError, refetch: refetchSprints } = useQuery<Sprint[]>({ queryKey: ["/api/sprints"] });
+  const [teamIds, setTeamIds] = useState<number[]>(project ? ((project as SharedProject).teamIds ?? (project.teamId == null ? [] : [project.teamId])) : []);
 
   const form = useForm<ProjectFormValues>({
     resolver: zodResolver(projectFormSchema),
@@ -67,12 +70,12 @@ function ProjectFormDialog({
 
   // Milestone drafts (only for new projects)
   const [milestones, setMilestones] = useState<MilestoneDraft[]>([]);
-  const [newMs, setNewMs] = useState<MilestoneDraft>({ name: "", description: "", timeline: "" });
+  const [newMs, setNewMs] = useState<MilestoneDraft>({ name: "", description: "", excludedSprintIds: [] });
 
   function addMilestone() {
-    if (!newMs.name.trim()) return;
+    if (!newMs.name.trim() || isPending || sprintsLoading || sprintsError) return;
     setMilestones(prev => [...prev, { ...newMs }]);
-    setNewMs({ name: "", description: "", timeline: "" });
+    setNewMs({ name: "", description: "", excludedSprintIds: [] });
   }
 
   function removeMilestone(idx: number) {
@@ -81,9 +84,11 @@ function ProjectFormDialog({
 
   const createMutation = useMutation({
     mutationFn: (data: ProjectFormValues) =>
-      apiRequest("POST", "/api/projects", { ...data, milestones }).then(r => r.json()),
+      apiRequest("POST", "/api/projects", { ...data, teamIds, milestones }).then(r => r.json()),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/teams"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/milestones"] });
       toast({ title: "Project created" });
       onClose();
     },
@@ -94,9 +99,10 @@ function ProjectFormDialog({
 
   const updateMutation = useMutation({
     mutationFn: (data: ProjectFormValues) =>
-      apiRequest("PATCH", `/api/projects/${project!.id}`, data).then(r => r.json()),
+      apiRequest("PATCH", `/api/projects/${project!.id}`, { ...data, teamIds }).then(r => r.json()),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/teams"] });
       toast({ title: "Project updated" });
       onClose();
     },
@@ -163,6 +169,17 @@ function ProjectFormDialog({
               )}
             />
 
+            <fieldset className="space-y-2">
+              <legend className="text-sm font-medium">Teams</legend>
+              <p className="text-xs text-muted-foreground">A project can be shared with more than one team.</p>
+              {teamsLoading ? <p role="status" className="text-sm text-muted-foreground">Loading teams…</p> : teamsError ? <p className="text-sm text-destructive">Teams couldn’t be loaded. <button type="button" className="underline" onClick={() => refetchTeams()}>Retry</button></p> : teams.length ? <div className="grid max-h-36 gap-1 overflow-y-auto rounded-lg border p-2 sm:grid-cols-2">
+                {teams.map(team => <label key={team.id} className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-muted">
+                  <input type="checkbox" disabled={isPending} checked={teamIds.includes(team.id)} onChange={e => setTeamIds(ids => e.target.checked ? [...ids, team.id] : ids.filter(id => id !== team.id))} />
+                  <span className="truncate">{team.name}</span>
+                </label>)}
+              </div> : <p className="rounded-lg border border-dashed p-3 text-sm text-muted-foreground">No teams yet. Create one from Team Overview.</p>}
+            </fieldset>
+
             {/* Milestones section — only shown when creating a new project */}
             {!isEdit && (
               <div className="space-y-2 pt-1">
@@ -173,8 +190,8 @@ function ProjectFormDialog({
                       <div key={i} className="flex items-center gap-2 bg-muted/50 rounded-lg px-3 py-2 text-sm">
                         <Flag className="w-3.5 h-3.5 text-primary shrink-0" />
                         <span className="flex-1 truncate font-medium">{m.name}</span>
-                        {m.timeline && <span className="text-xs text-muted-foreground shrink-0">{m.timeline}</span>}
-                        <button type="button" onClick={() => removeMilestone(i)} className="p-0.5 hover:text-destructive transition-colors">
+                        <SprintLabels sprints={sprints} excludedSprintIds={m.excludedSprintIds} />
+                        <button type="button" onClick={() => removeMilestone(i)} disabled={isPending} aria-label={`Remove milestone ${m.name}`} title={`Remove ${m.name}`} className="rounded p-1 transition-colors hover:bg-destructive/10 hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50">
                           <X className="w-3.5 h-3.5" />
                         </button>
                       </div>
@@ -188,14 +205,17 @@ function ProjectFormDialog({
                     onChange={e => setNewMs(p => ({ ...p, name: e.target.value }))}
                     onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); addMilestone(); } }}
                   />
-                  <div className="flex gap-2">
-                    <Input
-                      placeholder="Timeline (optional)"
-                      value={newMs.timeline}
-                      onChange={e => setNewMs(p => ({ ...p, timeline: e.target.value }))}
-                      className="flex-1"
-                    />
-                    <Button type="button" variant="outline" size="sm" onClick={addMilestone} disabled={!newMs.name.trim()}>
+                  <fieldset className="space-y-1.5">
+                    <legend className="text-xs font-medium text-muted-foreground">Included sprints</legend>
+                    {sprintsLoading ? <p role="status" className="flex items-center gap-2 text-xs text-muted-foreground"><Loader2 className="h-3.5 w-3.5 animate-spin"/>Loading sprints…</p> : sprintsError ? <p className="text-xs text-destructive">Sprints couldn’t be loaded. <button type="button" className="underline" onClick={() => refetchSprints()}>Retry</button></p> : sprints.length === 0 ? <p className="text-xs text-muted-foreground">No sprints yet. Future sprints will be included by default.</p> : <div className="flex flex-wrap gap-x-4 gap-y-2">
+                      {sprints.map(sprint => <label key={sprint.id} className="flex items-center gap-1.5 text-xs">
+                        <input type="checkbox" disabled={isPending} aria-label={`Include Sprint ${sprint.number}`} checked={!newMs.excludedSprintIds.includes(sprint.id)} onChange={e => setNewMs(p => ({ ...p, excludedSprintIds: e.target.checked ? p.excludedSprintIds.filter(id => id !== sprint.id) : [...p.excludedSprintIds, sprint.id] }))} />
+                        Sprint {sprint.number}
+                      </label>)}
+                    </div>}
+                  </fieldset>
+                  <div className="flex justify-end">
+                    <Button type="button" variant="outline" size="sm" onClick={addMilestone} disabled={!newMs.name.trim() || isPending || sprintsLoading || sprintsError}>
                       <Plus className="w-3.5 h-3.5 mr-1" />
                       Add
                     </Button>
@@ -220,14 +240,23 @@ function ProjectFormDialog({
 
 // ─── Milestone inline manager (on the card) ───────────────────────────────────
 
+function SprintLabels({ sprints, excludedSprintIds }: { sprints: Sprint[]; excludedSprintIds: number[] }) {
+  const included = sprints.filter(sprint => !excludedSprintIds.includes(sprint.id));
+  if (included.length === 0) {
+    return <span className="text-right text-[10px] text-muted-foreground">{sprints.length ? "No sprints selected" : "No sprints yet · future included"}</span>;
+  }
+  return <span className="flex max-w-40 flex-wrap justify-end gap-1">{included.map(sprint => <span key={sprint.id} className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">Sprint {sprint.number}</span>)}</span>;
+}
+
 export function MilestoneManager({ project }: { project: Project }) {
   const { toast } = useToast();
   const [addingNew, setAddingNew] = useState(false);
   const [newName, setNewName] = useState("");
-  const [newTimeline, setNewTimeline] = useState("");
+  const [newExcludedSprintIds, setNewExcludedSprintIds] = useState<number[]>([]);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editName, setEditName] = useState("");
-  const [editTimeline, setEditTimeline] = useState("");
+  const [editExcludedSprintIds, setEditExcludedSprintIds] = useState<number[]>([]);
+  const { data: sprints = [], isLoading: sprintsLoading, isError: sprintsError, refetch: refetchSprints } = useQuery<Sprint[]>({ queryKey: ["/api/sprints"] });
 
   const { data: milestones = [], isLoading, isError, refetch } = useQuery<Milestone[]>({
     queryKey: ["/api/projects", project.id, "milestones"],
@@ -237,18 +266,22 @@ export function MilestoneManager({ project }: { project: Project }) {
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ["/api/projects", project.id, "milestones"] });
     queryClient.invalidateQueries({ queryKey: ["/api/milestones"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/projects", project.id] });
+    queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/teams"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/tasks"] });
   };
 
   const createMs = useMutation({
-    mutationFn: (data: { name: string; timeline?: string }) =>
+    mutationFn: (data: { name: string; excludedSprintIds: number[] }) =>
       apiRequest("POST", `/api/projects/${project.id}/milestones`, data).then(r => r.json()),
-    onSuccess: () => { invalidate(); setAddingNew(false); setNewName(""); setNewTimeline(""); },
+    onSuccess: () => { invalidate(); setAddingNew(false); setNewName(""); setNewExcludedSprintIds([]); },
     onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
 
   const updateMs = useMutation({
-    mutationFn: ({ id, name, timeline }: { id: number; name: string; timeline: string }) =>
-      apiRequest("PATCH", `/api/milestones/${id}`, { name, timeline: timeline || null }).then(r => r.json()),
+    mutationFn: ({ id, name, excludedSprintIds }: { id: number; name: string; excludedSprintIds: number[] }) =>
+      apiRequest("PATCH", `/api/milestones/${id}`, { name, excludedSprintIds }).then(r => r.json()),
     onSuccess: () => { invalidate(); setEditingId(null); },
     onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
@@ -267,7 +300,7 @@ export function MilestoneManager({ project }: { project: Project }) {
   function startEdit(m: Milestone) {
     setEditingId(m.id);
     setEditName(m.name);
-    setEditTimeline(m.timeline ?? "");
+    setEditExcludedSprintIds((m as Milestone & { excludedSprintIds?: number[] }).excludedSprintIds ?? []);
   }
 
   function cancelEdit() { setEditingId(null); }
@@ -279,7 +312,10 @@ export function MilestoneManager({ project }: { project: Project }) {
           Milestones ({milestones.length})
         </p>
         <button
+          type="button"
           onClick={() => setAddingNew(v => !v)}
+          disabled={createMs.isPending || updateMs.isPending || deleteMs.isPending}
+          aria-label={addingNew ? "Close new milestone form" : "Add milestone"}
           className="text-xs text-primary hover:underline flex items-center gap-1"
         >
           <Plus className="w-3 h-3" />
@@ -303,22 +339,27 @@ export function MilestoneManager({ project }: { project: Project }) {
                 onChange={e => setEditName(e.target.value)}
                 className="h-7 text-xs"
                 autoFocus
+                disabled={updateMs.isPending}
               />
-              <div className="flex gap-1">
-                <Input
-                  placeholder="Timeline"
-                  value={editTimeline}
-                  onChange={e => setEditTimeline(e.target.value)}
-                  className="h-7 text-xs flex-1"
-                />
+              <fieldset className="space-y-1.5">
+                <legend className="text-xs font-medium text-muted-foreground">Included sprints</legend>
+                {sprintsLoading ? <p role="status" className="flex items-center gap-2 text-xs text-muted-foreground"><Loader2 className="h-3.5 w-3.5 animate-spin"/>Loading sprints…</p> : sprintsError ? <p className="text-xs text-destructive">Sprints couldn’t be loaded. <button type="button" className="underline" onClick={() => refetchSprints()}>Retry</button></p> : sprints.length === 0 ? <p className="text-xs text-muted-foreground">No sprints yet. Future sprints will be included by default.</p> : <div className="flex flex-wrap gap-x-3 gap-y-2">{sprints.map(sprint => <label key={sprint.id} className="flex items-center gap-1.5 text-xs">
+                  <input type="checkbox" disabled={updateMs.isPending} aria-label={`Include Sprint ${sprint.number}`} checked={!editExcludedSprintIds.includes(sprint.id)} onChange={e => setEditExcludedSprintIds(ids => e.target.checked ? ids.filter(id => id !== sprint.id) : [...ids, sprint.id])} />
+                  Sprint {sprint.number}
+                </label>)}</div>}
+              </fieldset>
+              <div className="flex justify-end gap-1">
                 <button
-                  onClick={() => updateMs.mutate({ id: m.id, name: editName, timeline: editTimeline })}
-                  disabled={!editName.trim() || updateMs.isPending}
-                  className="p-1 text-green-600 hover:bg-green-50 rounded transition-colors"
+                  type="button"
+                  onClick={() => updateMs.mutate({ id: m.id, name: editName, excludedSprintIds: editExcludedSprintIds })}
+                  disabled={!editName.trim() || updateMs.isPending || sprintsLoading || sprintsError}
+                  aria-label="Save milestone changes"
+                  title="Save milestone changes"
+                  className="rounded p-1 text-green-600 transition-colors hover:bg-green-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
                 >
-                  <Check className="w-3.5 h-3.5" />
+                  {updateMs.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
                 </button>
-                <button onClick={cancelEdit} className="p-1 text-muted-foreground hover:bg-muted rounded transition-colors">
+                <button type="button" onClick={cancelEdit} disabled={updateMs.isPending} aria-label="Cancel milestone editing" title="Cancel" className="rounded p-1 text-muted-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50">
                   <X className="w-3.5 h-3.5" />
                 </button>
               </div>
@@ -327,23 +368,29 @@ export function MilestoneManager({ project }: { project: Project }) {
             <div className="flex items-center gap-2">
               <Flag className="w-3 h-3 text-primary shrink-0" />
               <span className="text-sm flex-1 truncate">{m.name}</span>
-              {m.timeline && <span className="text-xs text-muted-foreground shrink-0">{m.timeline}</span>}
-              <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+              <SprintLabels sprints={sprints} excludedSprintIds={(m as Milestone & { excludedSprintIds?: number[] }).excludedSprintIds ?? []} />
+              <div className="flex shrink-0 gap-1 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100">
                 <button
+                  type="button"
                   onClick={() => startEdit(m)}
-                  className="p-0.5 hover:text-foreground text-muted-foreground transition-colors"
+                  disabled={createMs.isPending || updateMs.isPending || deleteMs.isPending}
+                  className="rounded p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   title="Rename milestone"
+                  aria-label={`Edit ${m.name}`}
                 >
                   <Pencil className="w-3 h-3" />
                 </button>
                 <button
+                  type="button"
+                  disabled={createMs.isPending || updateMs.isPending || deleteMs.isPending}
                   onClick={() => {
                     if (confirm(`Remove milestone "${m.name}"? Tasks assigned to it will have their milestone cleared.`)) {
                       deleteMs.mutate(m.id);
                     }
                   }}
-                  className="p-0.5 hover:text-destructive text-muted-foreground transition-colors"
+                  className="rounded p-1 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   title="Remove milestone"
+                  aria-label={`Remove ${m.name}`}
                 >
                   <Trash2 className="w-3 h-3" />
                 </button>
@@ -353,7 +400,7 @@ export function MilestoneManager({ project }: { project: Project }) {
         </div>
       ))}
 
-      {milestones.length === 0 && !isLoading && !addingNew && (
+      {milestones.length === 0 && !isLoading && !isError && !addingNew && (
         <p className="text-xs text-muted-foreground italic">No milestones yet</p>
       )}
 
@@ -365,25 +412,34 @@ export function MilestoneManager({ project }: { project: Project }) {
             onChange={e => setNewName(e.target.value)}
             className="h-7 text-xs"
             autoFocus
-            onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); if (newName.trim()) createMs.mutate({ name: newName, timeline: newTimeline || undefined }); } }}
+            disabled={createMs.isPending}
+            onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); if (newName.trim() && !createMs.isPending && !sprintsLoading && !sprintsError) createMs.mutate({ name: newName, excludedSprintIds: newExcludedSprintIds }); } }}
           />
-          <div className="flex gap-1">
-            <Input
-              placeholder="Timeline (optional)"
-              value={newTimeline}
-              onChange={e => setNewTimeline(e.target.value)}
-              className="h-7 text-xs flex-1"
-            />
+          <fieldset className="space-y-1.5">
+            <legend className="text-xs font-medium text-muted-foreground">Included sprints</legend>
+            {sprintsLoading ? <p role="status" className="flex items-center gap-2 text-xs text-muted-foreground"><Loader2 className="h-3.5 w-3.5 animate-spin"/>Loading sprints…</p> : sprintsError ? <p className="text-xs text-destructive">Sprints couldn’t be loaded. <button type="button" className="underline" onClick={() => refetchSprints()}>Retry</button></p> : sprints.length === 0 ? <p className="text-xs text-muted-foreground">No sprints yet. Future sprints will be included by default.</p> : <div className="flex flex-wrap gap-x-3 gap-y-2">{sprints.map(sprint => <label key={sprint.id} className="flex items-center gap-1.5 text-xs">
+              <input type="checkbox" disabled={createMs.isPending} aria-label={`Include Sprint ${sprint.number}`} checked={!newExcludedSprintIds.includes(sprint.id)} onChange={e => setNewExcludedSprintIds(ids => e.target.checked ? ids.filter(id => id !== sprint.id) : [...ids, sprint.id])} />
+              Sprint {sprint.number}
+            </label>)}</div>}
+          </fieldset>
+          <div className="flex justify-end gap-1">
             <button
-              onClick={() => { if (newName.trim()) createMs.mutate({ name: newName, timeline: newTimeline || undefined }); }}
-              disabled={!newName.trim() || createMs.isPending}
-              className="px-2 py-1 bg-primary text-primary-foreground rounded text-xs hover:bg-primary/90 transition-colors disabled:opacity-50"
+              type="button"
+              onClick={() => { if (newName.trim()) createMs.mutate({ name: newName, excludedSprintIds: newExcludedSprintIds }); }}
+              disabled={!newName.trim() || createMs.isPending || sprintsLoading || sprintsError}
+              aria-label="Save new milestone"
+              title="Save new milestone"
+              className="rounded bg-primary px-2 py-1 text-xs text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
             >
               {createMs.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
             </button>
             <button
-              onClick={() => { setAddingNew(false); setNewName(""); setNewTimeline(""); }}
-              className="px-2 py-1 rounded text-xs text-muted-foreground hover:bg-muted transition-colors"
+              type="button"
+              onClick={() => { setAddingNew(false); setNewName(""); setNewExcludedSprintIds([]); }}
+              disabled={createMs.isPending}
+              aria-label="Cancel new milestone"
+              title="Cancel"
+              className="rounded px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
             >
               <X className="w-3 h-3" />
             </button>
@@ -416,7 +472,7 @@ function ProjectCard({
   const STATUS_COLORS: Record<string, string> = {
     not_started: "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300",
     in_progress: "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300",
-    needs_review: "bg-[#FF6F91]/15 text-[#FF6F91] dark:bg-[#FF6F91]/25 dark:text-[#FF6F91]",
+    needs_review: "bg-rose-100 text-rose-700 dark:bg-rose-900 dark:text-rose-300",
     done: "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300",
   };
   const STATUS_LABELS: Record<string, string> = {
@@ -451,9 +507,15 @@ function ProjectCard({
         </div>
       )}
 
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <UsersRound className="h-4 w-4 text-primary" />
-        <span className="rounded-full bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary">{teams.find(t => t.id === project.teamId)?.name ?? "Unassigned"}</span>
+        {(project as SharedProject).teamIds != null
+          ? (project as SharedProject).teamIds!.length
+            ? (project as SharedProject).teamIds!.map(id => teams.find(t => t.id === id)).filter((t): t is Team => !!t).map(team => <span key={team.id} className="rounded-full bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary">{team.name}</span>)
+            : <span className="rounded-full bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground">Unassigned</span>
+          : project.teamId != null && teams.some(t => t.id === project.teamId)
+            ? <span className="rounded-full bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary">{teams.find(t => t.id === project.teamId)?.name}</span>
+            : <span className="rounded-full bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground">Unassigned</span>}
       </div>
 
       {/* timeline */}
@@ -525,7 +587,7 @@ export default function ProjectsPage() {
   const [sprintFilter, setSprintFilter] = useState<SprintFilterValue>("current");
   const { toast } = useToast();
 
-  const { data: projects = [], isLoading: projectsLoading, isError: projectsError, refetch: refetchProjects } = useQuery<TeamProject[]>({
+  const { data: projects = [], isLoading: projectsLoading, isError: projectsError, refetch: refetchProjects } = useQuery<SharedProject[]>({
     queryKey: ["/api/projects"],
   });
   const { data: teams = [] } = useQuery<Team[]>({ queryKey: ["/api/teams"] });

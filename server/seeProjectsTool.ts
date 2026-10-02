@@ -2,6 +2,8 @@ import { listProjects } from "./projectService";
 import { listMilestones } from "./milestoneService";
 import { listTasks } from "./taskService";
 import type { Project } from "@shared/schema";
+import { listTeams } from "./teamService";
+import { listSprints } from "./sprintService";
 
 export type SeeProjectsArgs = {
   projectId?: number;
@@ -16,10 +18,12 @@ export type SeeProjectsResult = {
 };
 
 export async function runSeeProjectsTool(args: SeeProjectsArgs): Promise<SeeProjectsResult> {
-  const [allProjects, allMilestones, allTasks] = await Promise.all([
+  const [allProjects, allMilestones, allTasks, teams, sprints] = await Promise.all([
     listProjects(),
     listMilestones(),
     listTasks({ archived: false }),
+    listTeams(),
+    listSprints(),
   ]);
 
   // Filter by projectId if provided
@@ -76,6 +80,7 @@ export async function runSeeProjectsTool(args: SeeProjectsArgs): Promise<SeeProj
     parts.push(`### ${project.name}`);
     if (project.description) parts.push(`Description: ${project.description}`);
     if (project.timeline) parts.push(`Timeline: ${project.timeline}`);
+    parts.push(`Teams: ${teams.filter(team => project.teamIds.includes(team.id)).map(team => team.name).join(", ") || "Unassigned"}`);
     parts.push(
       `Tasks: ${totalTasks} total (not_started=${counts.not_started}, in_progress=${counts.in_progress}, needs_review=${counts.needs_review}, done=${counts.done})`
     );
@@ -84,7 +89,7 @@ export async function runSeeProjectsTool(args: SeeProjectsArgs): Promise<SeeProj
       parts.push(`Milestones (${milestones.length}):`);
       for (const ms of milestones) {
         let msLine = `  - ${ms.name}`;
-        if (ms.timeline) msLine += ` [${ms.timeline}]`;
+        msLine += ` [${sprints.filter(sprint => ms.sprintIds.includes(sprint.id)).map(sprint => `Sprint ${sprint.number}`).join(", ") || "No sprints selected"}]`;
         if (ms.description) msLine += ` — ${ms.description}`;
         parts.push(msLine);
       }

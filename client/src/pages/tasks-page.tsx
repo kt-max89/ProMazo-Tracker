@@ -24,6 +24,7 @@ import { SprintFilterSelect } from "@/components/sprint-filter-select";
 import { taskMatchesSprint, type SprintFilterValue } from "@/lib/sprints";
 
 type AppUser = { id: number; displayName: string; email: string };
+type SharedProject = Project & { teamIds?: number[]; teamId?: number | null };
 
 const STATUSES = [
   {
@@ -181,7 +182,7 @@ export default function TasksPage() {
     queryKey: ["/api/users"],
   });
 
-  const { data: projects = [], isLoading: projectsLoading, isError: projectsError, refetch: refetchProjects } = useQuery<Project[]>({
+  const { data: projects = [], isLoading: projectsLoading, isError: projectsError, refetch: refetchProjects } = useQuery<SharedProject[]>({
     queryKey: ["/api/projects"],
   });
   const { data: teams = [], isLoading: teamsLoading, isError: teamsError, refetch: refetchTeams } = useQuery<Team[]>({ queryKey: ["/api/teams"] });
@@ -196,10 +197,11 @@ export default function TasksPage() {
     if (projectFilter === "all") return;
     const project = projects.find(item => String(item.id) === projectFilter);
     if (!project) return;
+    const memberships = project.teamIds ?? (project.teamId == null ? [] : [project.teamId]);
     const inScope = teamScope === "all"
-      || (teamScope === "unassigned" && project.teamId == null)
-      || (teamScope === "my-team" && project.teamId === user?.teamId)
-      || teamScope === `team:${project.teamId}`;
+      || (teamScope === "unassigned" && memberships.length === 0)
+      || (teamScope === "my-team" && user?.teamId != null && memberships.includes(user.teamId))
+      || (teamScope.startsWith("team:") && memberships.includes(Number(teamScope.slice(5))));
     if (!inScope) setProjectFilter("all");
   }, [teamScope, projects, projectFilter, user?.teamId]);
 
@@ -247,10 +249,10 @@ export default function TasksPage() {
     teamScope === "all" || teamScope === "initial"
       ? true
       : teamScope === "unassigned"
-        ? project.teamId == null
+        ? (project.teamIds ?? (project.teamId == null ? [] : [project.teamId])).length === 0
         : teamScope === "my-team"
-          ? user?.teamId != null && project.teamId === user.teamId
-          : teamScope.startsWith("team:") && project.teamId === Number(teamScope.slice(5)),
+          ? user?.teamId != null && (project.teamIds ?? (project.teamId == null ? [] : [project.teamId])).includes(user.teamId)
+          : teamScope.startsWith("team:") && (project.teamIds ?? (project.teamId == null ? [] : [project.teamId])).includes(Number(teamScope.slice(5))),
   ).map(project => project.id));
   const scopedTasks = teamScope === "all" || teamScope === "initial"
     ? tasks

@@ -14,6 +14,7 @@ import {
   jsonb,
   check,
   index,
+  primaryKey,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 
@@ -22,6 +23,7 @@ import { sql } from "drizzle-orm";
 export const teamsTable = pgTable("teams", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
+  socialContract: text("social_contract").notNull().default(""),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -131,6 +133,14 @@ export const projectsTable = pgTable("projects", {
 
 // ─── Milestones ──────────────────────────────────────────────────────────────
 
+export const projectTeamsTable = pgTable("project_teams", {
+  projectId: integer("project_id").notNull().references(() => projectsTable.id, { onDelete: "cascade" }),
+  teamId: integer("team_id").notNull().references(() => teamsTable.id, { onDelete: "cascade" }),
+}, table => [
+  primaryKey({ columns: [table.projectId, table.teamId] }),
+  index("project_teams_team_idx").on(table.teamId),
+]);
+
 export const milestonesTable = pgTable("milestones", {
   id: serial("id").primaryKey(),
   projectId: integer("project_id")
@@ -139,6 +149,7 @@ export const milestonesTable = pgTable("milestones", {
   name: text("name").notNull(),
   description: text("description"),
   timeline: text("timeline"),
+  excludedSprintIds: jsonb("excluded_sprint_ids").$type<number[]>().notNull().default([]),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),

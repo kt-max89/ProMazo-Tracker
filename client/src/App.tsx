@@ -12,6 +12,7 @@ import HistoryPage from "@/pages/history-page";
 import TasksPage from "@/pages/tasks-page";
 import ProjectsPage from "@/pages/projects-page";
 import TeamOverviewPage from "@/pages/team-overview-page";
+import TeamPage from "@/pages/team-page";
 import MyTasksPage from "@/pages/my-tasks-page";
 import TaskPage from "@/pages/task-page";
 import ProjectPage from "@/pages/project-page";
@@ -58,6 +59,7 @@ function Router() {
       <Route path="/projects" component={() => <ProtectedRoute component={ProjectsPage} />} />
       <Route path="/projects/:id" component={() => <ProtectedRoute component={ProjectPage} />} />
       <Route path="/team-overview" component={() => <ProtectedRoute component={TeamOverviewPage} />} />
+      <Route path="/teams/:id" component={() => <ProtectedRoute component={TeamPage} />} />
       <Route path="/reflections" component={() => <ProtectedRoute component={ReflectionsPage} />} />
       <Route path="/my-tasks" component={() => <ProtectedRoute component={MyTasksPage} />} />
       <Route component={NotFound} />

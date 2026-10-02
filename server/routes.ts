@@ -14,8 +14,8 @@ import { listCommentsByTaskId, createComment } from "./commentService";
 import { listTaskActivity } from "./taskActivityService";
 import { createTeamPost, deleteOwnTeamPost, listTeamPosts, toggleTeamPostPin } from "./teamPostService";
 import { listProjects, getProject, createProject, updateProject } from "./projectService";
-import { insertTeamSchema, teamMembershipSchema } from "@shared/schema";
-import { listTeams, createTeam, switchTeam, TeamClaimConflict } from "./teamService";
+import { insertTeamSchema, teamMembershipSchema, updateTeamSchema } from "@shared/schema";
+import { listTeams, getTeam, createTeam, switchTeam, updateTeam, changeProjectLink } from "./teamService";
 import { listMilestones, listMilestonesByProject, getMilestone, createMilestone, updateMilestone, deleteMilestone } from "./milestoneService";
 import { createNextSprint, getTrackerSettings, listSprints, setCurrentSprint } from "./sprintService";
 import { createReflection, listReflections } from "./reflectionService";
@@ -65,7 +65,7 @@ export async function registerRoutes(
     try {
       return res.json(await createTeam(req.user!.id, parsed.data.name, parsed.data.projectIds));
     } catch (err: any) {
-      return res.status(err instanceof TeamClaimConflict ? 409 : 400).json({ message: err.message });
+      return res.status(400).json({ message: err.message });
     }
   });
 
@@ -79,6 +79,30 @@ export async function registerRoutes(
       return res.json(safeUser);
     } catch (err: any) { return res.status(400).json({ message: err.message }); }
   });
+
+  app.get("/api/teams/:id", requireAuth, async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isSafeInteger(id) || id <= 0) return res.status(400).json({ message: "Invalid team id" });
+    try {
+      const team = await getTeam(id);
+      return team ? res.json(team) : res.status(404).json({ message: "Team not found" });
+    } catch { return res.status(500).json({ message: "Could not load team" }); }
+  });
+  app.patch("/api/teams/:id", requireAuth, async (req, res) => {
+    const id = Number(req.params.id);
+    const parsed = updateTeamSchema.safeParse(req.body);
+    if (!Number.isSafeInteger(id) || id <= 0 || !parsed.success) return res.status(400).json({ message: "A valid team and Social Contract are required" });
+    try { return res.json(await updateTeam(id, parsed.data.socialContract)); }
+    catch (err: any) { return res.status(err.message === "Team not found" ? 404 : 500).json({ message: err.message === "Team not found" ? err.message : "Could not save Social Contract" }); }
+  });
+  for (const method of ["put", "delete"] as const) {
+    app[method]("/api/teams/:id/projects/:projectId", requireAuth, async (req, res) => {
+      const id = Number(req.params.id), projectId = Number(req.params.projectId);
+      if (![id, projectId].every(value => Number.isSafeInteger(value) && value > 0)) return res.status(400).json({ message: "Invalid team or project id" });
+      try { return res.json(await changeProjectLink(id, projectId, method === "put")); }
+      catch (err: any) { return res.status(/not found/.test(err.message) ? 404 : 500).json({ message: /not found/.test(err.message) ? err.message : "Could not update project link" }); }
+    });
+  }
 
   // Auth routes
   app.post("/api/auth/register", async (req, res) => {
@@ -849,16 +873,10 @@ export async function registerRoutes(
     try {
       const parsed = insertProjectSchema.safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ message: parsed.error.errors[0].message });
-      const project = await createProject(parsed.data);
-
-      // Optionally create milestones passed along with the project
-      const milestoneInputs: { name: string; description?: string; timeline?: string }[] =
-        Array.isArray(req.body.milestones) ? req.body.milestones : [];
-      for (const m of milestoneInputs) {
-        if (m.name?.trim()) {
-          await createMilestone({ projectId: project.id, name: m.name.trim(), description: m.description ?? null, timeline: m.timeline ?? null });
-        }
-      }
+      const draftsSchema = insertMilestoneSchema.omit({ projectId: true }).array();
+      const drafts = draftsSchema.safeParse(req.body.milestones ?? []);
+      if (!drafts.success) return res.status(400).json({ message: drafts.error.errors[0].message });
+      const project = await createProject(parsed.data, drafts.data);
 
       return res.json(project);
     } catch (err: any) {

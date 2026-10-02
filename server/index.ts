@@ -39,6 +39,7 @@ app.use((req, res, next) => {
   const path = req.path;
   let capturedJsonResponse: Record<string, any> | undefined = undefined;
   const shouldLogResponseBody =
+    !path.startsWith("/api/teams") &&
     !path.startsWith("/api/team-posts") &&
     !path.startsWith("/api/reflections");
 

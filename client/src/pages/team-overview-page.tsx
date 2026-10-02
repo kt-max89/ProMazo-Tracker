@@ -44,7 +44,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 
-type TeamProject = Project & { teamId: number | null };
+type TeamProject = Project & { teamIds?: number[]; teamId?: number | null };
 type TeamMember = { id: number; displayName: string; teamId: number | null };
 
 function formatDateTime(iso: string): string {
@@ -76,11 +76,6 @@ export default function TeamOverviewPage() {
   const projectsQuery = useQuery<TeamProject[]>({
     queryKey: ["/api/projects"],
   });
-  useEffect(() => {
-    if (wizardStep !== 2 || !projectsQuery.data) return;
-    const available = new Set(projectsQuery.data.filter(project => project.teamId == null).map(project => project.id));
-    setSelectedProjectIds(ids => ids.filter(id => available.has(id)));
-  }, [wizardStep, projectsQuery.data]);
   const teamsQuery = useQuery<Team[]>({ queryKey: ["/api/teams"] });
   const membersQuery = useQuery<TeamMember[]>({
     queryKey: ["/api/users"],
@@ -113,7 +108,7 @@ export default function TeamOverviewPage() {
     },
     onError: (err: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
-      toast({ title: "Could not create team", description: err.message || "A selected project may have been claimed. Refresh and try again.", variant: "destructive" });
+      toast({ title: "Could not create team", description: err.message, variant: "destructive" });
     },
   });
   const currentSprintMutation = useMutation({
@@ -133,6 +128,7 @@ export default function TeamOverviewPage() {
     mutationFn: () => apiRequest("POST", "/api/sprints/next").then(r => r.json() as Promise<Sprint>),
     onSuccess: (sprint) => {
       queryClient.invalidateQueries({ queryKey: ["/api/sprints"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/milestones"] });
       queryClient.invalidateQueries({ queryKey: ["/api/tasks"] });
       queryClient.invalidateQueries({ queryKey: ["/api/tasks", "archived"] });
       queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
@@ -261,7 +257,7 @@ export default function TeamOverviewPage() {
             <section className="rounded-xl border bg-card p-5 sm:p-6">
               <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                 <div><p className="text-xs font-semibold uppercase tracking-[.16em] text-primary">Shared workspace</p><h2 className="mt-1 text-xl font-semibold">Teams</h2><p className="mt-1 text-sm text-muted-foreground">Organize projects and colleagues. Every workspace remains visible to everyone.</p></div>
-                <Button size="sm" onClick={()=>{setWizardStep(0);setTeamName("");setSelectedProjectIds([]);setWizardStep(1);}}><Plus className="mr-1.5 h-4 w-4"/>Create team</Button>
+                <Button size="sm" onClick={()=>{setTeamName("");setSelectedProjectIds([]);setWizardStep(1);}}><Plus className="mr-1.5 h-4 w-4"/>Create team</Button>
               </div>
               {teamsQuery.isLoading ? (
                 <div className="mt-5 h-20 animate-pulse rounded-lg bg-muted" />
@@ -282,9 +278,10 @@ export default function TeamOverviewPage() {
                     return (
                       <div key={team.id} className="flex flex-wrap items-start gap-3 px-4 py-3" data-testid={`team-row-${team.id}`}>
                         <div className="min-w-0 flex-1">
-                          <p className="break-words font-medium">{team.name}</p>
+                           <Link href={`/teams/${team.id}`} className="inline-flex items-center gap-1 break-words font-medium hover:text-primary">{team.name}<ChevronRight className="h-3.5 w-3.5"/></Link>
+                           <p className="text-xs text-muted-foreground">Open workspace</p>
                           <p className="text-xs text-muted-foreground">
-                            {projectsQuery.data?.filter(project => project.teamId === team.id).length ?? 0} projects
+                             {projectsQuery.data?.filter(project => (project.teamIds ?? (project.teamId == null ? [] : [project.teamId])).includes(team.id)).length ?? 0} projects
                           </p>
                           <div className="mt-2 text-sm" data-testid={`team-members-${team.id}`}>
                             {membersQuery.isLoading ? (
@@ -327,15 +324,22 @@ export default function TeamOverviewPage() {
                 </div>
               )}
               {user?.teamId != null && <div className="mt-4 flex flex-wrap items-center gap-3 border-t pt-4"><span className="text-sm text-muted-foreground">Current membership</span><span className="font-medium">{teamsQuery.data?.find(t=>t.id===user.teamId)?.name ?? "Your team"}</span><Button variant="ghost" size="sm" disabled={membershipMutation.isPending} onClick={()=>membershipMutation.mutate(null)}>Leave team</Button></div>}
-              {wizardStep > 0 && <div className="mt-5 rounded-xl border bg-muted/20 p-4 sm:p-5">
-                <p className="text-xs font-semibold uppercase tracking-[.14em] text-muted-foreground">Create team · {wizardStep === 1 ? "01 / 02" : "02 / 02"}</p>
-                {wizardStep === 1 ? <div className="mt-3 space-y-4"><label className="block text-sm font-medium">What should this team be called?<Input autoFocus disabled={createTeamMutation.isPending} className="mt-2" value={teamName} onChange={e=>setTeamName(e.target.value)} placeholder="e.g. Platform delivery" onKeyDown={e=>{if(e.key==="Enter"&&teamName.trim()&&!createTeamMutation.isPending)setWizardStep(2);}}/></label><div className="flex justify-end gap-2"><Button variant="ghost" disabled={createTeamMutation.isPending} onClick={()=>setWizardStep(0)}>Cancel</Button><Button disabled={!teamName.trim()||createTeamMutation.isPending} onClick={()=>setWizardStep(2)}>Continue<ChevronRight className="ml-1 h-4 w-4"/></Button></div></div> :
-                  <div className="space-y-4"><div><h3 className="font-medium">Claim any unassigned projects?</h3><p className="mt-1 text-sm text-muted-foreground">You can skip this and assign projects later.</p></div>
-                    {projectsQuery.isLoading ? <div className="space-y-2 rounded-lg border p-3"><div className="h-4 w-2/3 animate-pulse rounded bg-muted"/><div className="h-4 w-1/2 animate-pulse rounded bg-muted"/></div>
-                    : projectsQuery.isError ? <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">Projects couldn’t be loaded, so we can’t safely offer project claims. <button className="ml-1 underline" onClick={()=>projectsQuery.refetch()}>Retry</button></div>
-                    : <div className="max-h-48 space-y-1 overflow-y-auto rounded-lg border bg-background p-2">{(projectsQuery.data??[]).filter(p=>p.teamId==null).length===0?<p className="p-3 text-sm text-muted-foreground">There are no unassigned projects.</p>:(projectsQuery.data??[]).filter(p=>p.teamId==null).map(project=><label key={project.id} className="flex cursor-pointer items-center gap-3 rounded-md px-3 py-2 text-sm hover:bg-muted"><input type="checkbox" disabled={createTeamMutation.isPending} checked={selectedProjectIds.includes(project.id)} onChange={e=>setSelectedProjectIds(ids=>e.target.checked?[...ids,project.id]:ids.filter(id=>id!==project.id))}/><span>{project.name}</span></label>)}</div>}
-                    <div className="flex flex-wrap justify-between gap-2"><Button variant="ghost" disabled={createTeamMutation.isPending} onClick={()=>setWizardStep(1)}>Back</Button><div className="flex gap-2"><Button variant="ghost" disabled={createTeamMutation.isPending} onClick={()=>{setWizardStep(0);setTeamName("");setSelectedProjectIds([]);}}>Cancel</Button><Button disabled={createTeamMutation.isPending||projectsQuery.isLoading||projectsQuery.isError} onClick={()=>createTeamMutation.mutate()}>{createTeamMutation.isPending?<Loader2 className="mr-2 h-4 w-4 animate-spin"/>:null}Create team</Button></div></div></div>}
-              </div>}
+               {wizardStep > 0 && <div className="mt-5 rounded-xl border bg-muted/20 p-4 sm:p-5">
+                 <p className="text-xs font-semibold uppercase tracking-[.14em] text-muted-foreground">Create team · {wizardStep === 1 ? "1 / 2" : "2 / 2"}</p>
+                 {wizardStep === 1 ? <div className="mt-3 space-y-4">
+                   <label className="block text-sm font-medium">Team name<Input autoFocus className="mt-2" value={teamName} onChange={e=>setTeamName(e.target.value)} placeholder="e.g. Platform delivery" onKeyDown={e=>{if(e.key==="Enter"&&teamName.trim())setWizardStep(2);}}/></label>
+                   <div className="flex justify-end gap-2"><Button variant="ghost" onClick={()=>setWizardStep(0)}>Cancel</Button><Button disabled={!teamName.trim()} onClick={()=>setWizardStep(2)}>Continue</Button></div>
+                 </div> : <div className="mt-3 space-y-4">
+                   <fieldset disabled={createTeamMutation.isPending}>
+                     <legend className="font-medium">Link projects (optional)</legend>
+                     <p className="mt-1 text-sm text-muted-foreground">Projects already linked to other teams can be shared here. Their other links and tasks stay unchanged.</p>
+                     {projectsQuery.isLoading ? <p className="mt-3 text-sm text-muted-foreground">Loading projects…</p> : projectsQuery.isError ? <p className="mt-3 text-sm text-destructive">Projects couldn’t be loaded. <button className="underline" onClick={()=>projectsQuery.refetch()}>Retry</button></p> : <div className="mt-3 max-h-48 space-y-1 overflow-auto rounded-lg border bg-background p-2">
+                       {(projectsQuery.data??[]).length === 0 ? <p className="p-3 text-sm text-muted-foreground">No projects yet. You can add projects later.</p> : (projectsQuery.data??[]).map(project=><label key={project.id} className="flex cursor-pointer items-center gap-3 rounded-md px-3 py-2 text-sm hover:bg-muted"><input type="checkbox" checked={selectedProjectIds.includes(project.id)} onChange={e=>setSelectedProjectIds(ids=>e.target.checked?[...ids,project.id]:ids.filter(id=>id!==project.id))}/><span className="break-words">{project.name}</span></label>)}
+                     </div>}
+                   </fieldset>
+                   <div className="flex flex-wrap justify-between gap-2"><Button variant="ghost" disabled={createTeamMutation.isPending} onClick={()=>setWizardStep(1)}>Back</Button><div className="flex gap-2"><Button variant="ghost" disabled={createTeamMutation.isPending} onClick={()=>setWizardStep(0)}>Cancel</Button><Button disabled={createTeamMutation.isPending||projectsQuery.isLoading||projectsQuery.isError} onClick={()=>createTeamMutation.mutate()}>{createTeamMutation.isPending?<Loader2 className="mr-2 h-4 w-4 animate-spin"/>:null}Create team</Button></div></div>
+                 </div>}
+               </div>}
             </section>
             <section className="space-y-3">
               <div>
@@ -476,12 +480,19 @@ export default function TeamOverviewPage() {
               ) : (
                 <div className="space-y-4">
                   {[...(teamsQuery.data ?? []).map(team => ({ id: team.id as number | null, name: team.name })), { id: null, name: "Unassigned" }]
-                    .filter(group => projectsQuery.data?.some(project => project.teamId === group.id))
+                    .filter(group => projectsQuery.data?.some(project => group.id == null
+                      ? (project.teamIds ?? (project.teamId == null ? [] : [project.teamId])).length === 0
+                      : project.teamIds?.includes(group.id) || (project.teamIds == null && project.teamId === group.id)))
                     .map(group => (
                     <div key={group.id ?? "unassigned"} className="overflow-hidden rounded-xl border bg-card">
-                      <h3 className="border-b bg-muted/30 px-4 py-2 text-sm font-semibold">{group.name}</h3>
+                      <h3 className="flex items-center justify-between border-b bg-muted/30 px-4 py-2 text-sm font-semibold">
+                        {group.id == null ? group.name : <Link href={`/teams/${group.id}`} className="hover:text-primary">{group.name}</Link>}
+                        {group.id != null && <Link href={`/teams/${group.id}`} className="text-xs font-medium text-primary hover:underline">Manage team</Link>}
+                      </h3>
                       <div className="divide-y">
-                  {projectsQuery.data?.filter(project => project.teamId === group.id).map(project => (
+                  {projectsQuery.data?.filter(project => group.id == null
+                    ? (project.teamIds ?? (project.teamId == null ? [] : [project.teamId])).length === 0
+                    : project.teamIds?.includes(group.id) || (project.teamIds == null && project.teamId === group.id)).map(project => (
                     <Link
                       key={project.id}
                       href={`/projects/${project.id}`}
