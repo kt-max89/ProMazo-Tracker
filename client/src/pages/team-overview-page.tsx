@@ -45,6 +45,7 @@ import {
 } from "@/components/ui/alert-dialog";
 
 type TeamProject = Project & { teamId: number | null };
+type TeamMember = { id: number; displayName: string; teamId: number | null };
 
 function formatDateTime(iso: string): string {
   return new Date(iso).toLocaleString(undefined, {
@@ -81,6 +82,10 @@ export default function TeamOverviewPage() {
     setSelectedProjectIds(ids => ids.filter(id => available.has(id)));
   }, [wizardStep, projectsQuery.data]);
   const teamsQuery = useQuery<Team[]>({ queryKey: ["/api/teams"] });
+  const membersQuery = useQuery<TeamMember[]>({
+    queryKey: ["/api/users"],
+    refetchInterval: 30_000,
+  });
   const sprintsQuery = useQuery<Sprint[]>({ queryKey: ["/api/sprints"] });
   const sprintSettingsQuery = useQuery<TrackerSettings>({ queryKey: ["/api/sprint-settings"], refetchInterval: 30_000 });
   const membershipMutation = useMutation({
@@ -88,6 +93,7 @@ export default function TeamOverviewPage() {
     onSuccess: (updated: any) => {
       queryClient.setQueryData(["/api/auth/me"], updated);
       queryClient.invalidateQueries({ queryKey: ["/api/teams"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/users"] });
       queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
       queryClient.invalidateQueries({ queryKey: ["/api/tasks"] });
       toast({ title: updated.teamId == null ? "You left the team" : "Team membership updated" });
@@ -99,6 +105,7 @@ export default function TeamOverviewPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
       queryClient.invalidateQueries({ queryKey: ["/api/teams"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/users"] });
       queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
       queryClient.invalidateQueries({ queryKey: ["/api/tasks"] });
       setTeamName(""); setSelectedProjectIds([]); setWizardStep(0);
@@ -256,7 +263,69 @@ export default function TeamOverviewPage() {
                 <div><p className="text-xs font-semibold uppercase tracking-[.16em] text-primary">Shared workspace</p><h2 className="mt-1 text-xl font-semibold">Teams</h2><p className="mt-1 text-sm text-muted-foreground">Organize projects and colleagues. Every workspace remains visible to everyone.</p></div>
                 <Button size="sm" onClick={()=>{setWizardStep(0);setTeamName("");setSelectedProjectIds([]);setWizardStep(1);}}><Plus className="mr-1.5 h-4 w-4"/>Create team</Button>
               </div>
-              {teamsQuery.isLoading ? <div className="mt-5 h-20 animate-pulse rounded-lg bg-muted"/> : teamsQuery.isError ? <div className="mt-5 rounded-lg border border-destructive/30 p-4 text-sm text-destructive">Couldn’t load teams. <button className="underline" onClick={()=>teamsQuery.refetch()}>Retry</button></div> : (teamsQuery.data?.length ?? 0) === 0 ? <div className="mt-5 rounded-lg border border-dashed p-5 text-sm text-muted-foreground">No teams yet. Start a workspace for a group of colleagues.</div> : <div className="mt-5 divide-y rounded-lg border">{teamsQuery.data?.map(team=><div key={team.id} className="flex flex-wrap items-center gap-3 px-4 py-3"><div className="min-w-0 flex-1"><p className="truncate font-medium">{team.name}</p><p className="text-xs text-muted-foreground">{projectsQuery.data?.filter(p=>p.teamId===team.id).length ?? 0} projects</p></div>{user?.teamId===team.id ? <span className="rounded-full bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary">Your team</span> : <Button size="sm" variant="outline" disabled={membershipMutation.isPending} onClick={()=>membershipMutation.mutate(team.id)}>Join team</Button>}</div>)}</div>}
+              {teamsQuery.isLoading ? (
+                <div className="mt-5 h-20 animate-pulse rounded-lg bg-muted" />
+              ) : teamsQuery.isError ? (
+                <div className="mt-5 rounded-lg border border-destructive/30 p-4 text-sm text-destructive">
+                  Couldn’t load teams. <button className="underline" onClick={() => teamsQuery.refetch()}>Retry</button>
+                </div>
+              ) : (teamsQuery.data?.length ?? 0) === 0 ? (
+                <div className="mt-5 rounded-lg border border-dashed p-5 text-sm text-muted-foreground">
+                  No teams yet. Start a workspace for a group of colleagues.
+                </div>
+              ) : (
+                <div className="mt-5 divide-y rounded-lg border">
+                  {teamsQuery.data?.map(team => {
+                    const members = (membersQuery.data ?? [])
+                      .filter(member => member.teamId === team.id)
+                      .sort((a, b) => a.displayName.localeCompare(b.displayName) || a.id - b.id);
+                    return (
+                      <div key={team.id} className="flex flex-wrap items-start gap-3 px-4 py-3" data-testid={`team-row-${team.id}`}>
+                        <div className="min-w-0 flex-1">
+                          <p className="break-words font-medium">{team.name}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {projectsQuery.data?.filter(project => project.teamId === team.id).length ?? 0} projects
+                          </p>
+                          <div className="mt-2 text-sm" data-testid={`team-members-${team.id}`}>
+                            {membersQuery.isLoading ? (
+                              <p className="text-muted-foreground">Loading members…</p>
+                            ) : membersQuery.isError ? (
+                              <p className="text-destructive">
+                                Couldn’t load members. <button className="underline" onClick={() => membersQuery.refetch()}>Retry</button>
+                              </p>
+                            ) : (
+                              <>
+                                <p className="text-xs font-medium text-muted-foreground">
+                                  {members.length} {members.length === 1 ? "member" : "members"}
+                                </p>
+                                {members.length === 0 ? (
+                                  <p className="mt-1 text-muted-foreground">No members yet.</p>
+                                ) : (
+                                  <ul className="mt-1 flex flex-wrap gap-1.5" aria-label={`${team.name} members`}>
+                                    {members.map(member => (
+                                      <li key={member.id} className="max-w-full break-words rounded-md bg-muted px-2 py-1 text-xs">
+                                        {member.displayName}
+                                        {member.id === user?.id && <span className="text-muted-foreground"> (you)</span>}
+                                      </li>
+                                    ))}
+                                  </ul>
+                                )}
+                              </>
+                            )}
+                          </div>
+                        </div>
+                        {user?.teamId === team.id ? (
+                          <span className="rounded-full bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary">Your team</span>
+                        ) : (
+                          <Button size="sm" variant="outline" disabled={membershipMutation.isPending} onClick={() => membershipMutation.mutate(team.id)}>
+                            Join team
+                          </Button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
               {user?.teamId != null && <div className="mt-4 flex flex-wrap items-center gap-3 border-t pt-4"><span className="text-sm text-muted-foreground">Current membership</span><span className="font-medium">{teamsQuery.data?.find(t=>t.id===user.teamId)?.name ?? "Your team"}</span><Button variant="ghost" size="sm" disabled={membershipMutation.isPending} onClick={()=>membershipMutation.mutate(null)}>Leave team</Button></div>}
               {wizardStep > 0 && <div className="mt-5 rounded-xl border bg-muted/20 p-4 sm:p-5">
                 <p className="text-xs font-semibold uppercase tracking-[.14em] text-muted-foreground">Create team · {wizardStep === 1 ? "01 / 02" : "02 / 02"}</p>
