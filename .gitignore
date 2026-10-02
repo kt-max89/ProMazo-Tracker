@@ -4,3 +4,6 @@ dist
 server/public
 vite.config.ts.*
 *.tar.gz
+screenshots/team-browser-failure.png
+screenshots/team-overview-mobile.png
+screenshots/project-mobile.png
