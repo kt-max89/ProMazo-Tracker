@@ -7,6 +7,7 @@ import { mkdir } from "node:fs/promises";
 import { chromium, expect } from "@playwright/test";
 import bcrypt from "bcrypt";
 import { pool } from "../server/db";
+import { verifyTeamUpdateComposer } from "./team-update-composer.browser";
 
 if (!process.env.REPLIT_DEV_DOMAIN || process.env.REPLIT_DEPLOYMENT === "1") throw new Error("Run only in development preview");
 const baseURL = `https://${process.env.REPLIT_DEV_DOMAIN}`;
@@ -62,6 +63,8 @@ try {
   await page.getByTestId("button-submit-auth").click();
   await expect(page.getByTestId("auth-page")).toHaveCount(0);
   assert.equal((await api("GET", "/api/auth/me")).role, "user");
+  await verifyTeamUpdateComposer(page, suffix);
+  if (!process.argv.includes("--composer-only")) {
   assert.equal((await context.request.get("/api/admin/users")).status(), 403);
   assert.equal((await context.request.post("/api/documents", { data: {} })).status(), 403);
   await api("GET", "/api/documents");
@@ -265,6 +268,8 @@ try {
   await page.screenshot({ path: "screenshots/shared-project-mobile.png", fullPage: true });
   assert.deepEqual(errors, []);
   console.log("Shared projects, sprint defaults/exclusions, four status colors, team pages, contracts save/cancel/error, auth boundaries and mobile layouts passed.");
+  }
+  assert.deepEqual(errors, []);
 } catch (error) {
   await mkdir("screenshots", { recursive: true });
   await page.screenshot({ path: "screenshots/shared-workspaces-failure.png" }).catch(() => {});
@@ -280,6 +285,7 @@ try {
     await pool.query("DELETE FROM projects WHERE id = ANY($1::int[])", [projectIds]);
   }
   if (userId) {
+    await pool.query("DELETE FROM team_posts WHERE author_id = $1", [userId]);
     await pool.query("DELETE FROM session WHERE sess->'passport'->>'user' = $1", [String(userId)]);
     await pool.query("DELETE FROM users WHERE id = $1", [userId]);
   }

@@ -16,3 +16,9 @@ Layout overflow assertions should account for a one-CSS-pixel rounding differenc
 **Why:** The mobile Settings browser check reported a scroll width one pixel larger than the viewport while no element extended beyond it by more than one pixel. Treating that rounding as a broken layout caused unnecessary retries.
 
 **How to apply:** Inspect element bounds before changing UI solely to satisfy an integer-width assertion; reserve failures for meaningful overflow.
+
+When checking a phone layout after starting a browser on desktop, set the intended sidebar state explicitly or reload at the phone width.
+
+**Why:** Resizing a browser preserves mount-time desktop sidebar state, which can make a narrow-screen test measure an open desktop sidebar instead of the initial phone layout.
+
+**How to apply:** Close the sidebar before testing the content controls, or navigate at the target viewport when testing initial mobile behavior. Do not hide a genuine content overflow by relaxing the width assertion.

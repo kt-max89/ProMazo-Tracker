@@ -11,6 +11,7 @@
     "test": "tsx --test tests/*.test.ts",
     "test:chat-browser": "tsx tests/chat-drafting.browser.ts",
     "test:team-workspaces": "tsx tests/team-workspaces.browser.ts",
+    "test:team-update-composer": "tsx tests/team-workspaces.browser.ts --composer-only",
     "db:push": "drizzle-kit push",
     "db:user-access": "NODE_ENV=development tsx scripts/apply-user-access-schema.ts",
     "db:team-workspaces": "NODE_ENV=development tsx scripts/apply-team-workspace-schema.ts"

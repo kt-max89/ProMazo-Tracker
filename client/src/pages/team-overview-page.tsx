@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import ReactMarkdown from "react-markdown";
 import { Link, useLocation } from "wouter";
@@ -62,6 +62,9 @@ export default function TeamOverviewPage() {
   const [sidebarOpen, setSidebarOpen] = useState(() => window.innerWidth >= 768);
   const [showAll, setShowAll] = useState(false);
   const [body, setBody] = useState("");
+  const [composerOpen, setComposerOpen] = useState(false);
+  const addUpdateRef = useRef<HTMLButtonElement>(null);
+  const restoreComposerFocus = useRef(false);
   const [reflectionOpen, setReflectionOpen] = useState(false);
   const [selectedReflection, setSelectedReflection] = useState<SprintReflection | null>(null);
   const [postToDelete, setPostToDelete] = useState<TeamPost | null>(null);
@@ -146,6 +149,8 @@ export default function TeamOverviewPage() {
       apiRequest("POST", "/api/team-posts", { body: postBody }).then(r => r.json()),
     onSuccess: () => {
       setBody("");
+      setComposerOpen(false);
+      restoreComposerFocus.current = true;
       queryClient.invalidateQueries({ queryKey: ["/api/team-posts"] });
       toast({ title: "Post published" });
     },
@@ -153,6 +158,13 @@ export default function TeamOverviewPage() {
       toast({ title: "Could not publish post", description: err.message, variant: "destructive" });
     },
   });
+
+  useEffect(() => {
+    if (restoreComposerFocus.current && !composerOpen && !createMutation.isPending) {
+      addUpdateRef.current?.focus();
+      restoreComposerFocus.current = false;
+    }
+  }, [composerOpen, createMutation.isPending]);
 
   const pinMutation = useMutation({
     mutationFn: (id: number) =>
@@ -341,52 +353,69 @@ export default function TeamOverviewPage() {
                  </div>}
                </div>}
             </section>
-            <section className="space-y-3">
-              <div>
-                <h2 className="text-2xl font-semibold tracking-tight">What’s happening?</h2>
-                <p className="text-sm text-muted-foreground mt-1">
-                  Share a Markdown update with the whole team.
-                </p>
-              </div>
-              <form onSubmit={submitPost} className="rounded-xl border bg-card p-4 space-y-3 shadow-sm">
-                <Textarea
-                  data-testid="input-team-post"
-                  value={body}
-                  onChange={e => setBody(e.target.value)}
-                  placeholder="Share an update… Markdown is supported."
-                  rows={4}
-                  disabled={createMutation.isPending}
-                />
-                <div className="flex items-center justify-between gap-3">
-                  <span className="text-xs text-muted-foreground">Posts are shared with everyone on the team.</span>
+            <section className="space-y-3" aria-labelledby="team-updates-heading">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <h2 id="team-updates-heading" className="text-lg font-semibold">Team updates</h2>
+                <div className="flex flex-wrap items-center gap-3">
+                  {showAll && (
+                    <button
+                      className="text-sm text-primary hover:underline"
+                      onClick={() => setShowAll(false)}
+                      data-testid="button-show-fewer-posts"
+                    >
+                      Show fewer
+                    </button>
+                  )}
                   <Button
-                    type="submit"
+                    ref={addUpdateRef}
+                    type="button"
+                    variant="outline"
                     size="sm"
-                    disabled={!body.trim() || createMutation.isPending}
-                    data-testid="button-publish-team-post"
+                    aria-expanded={composerOpen}
+                    aria-controls="team-update-composer"
+                    data-testid="button-add-team-update"
+                    disabled={createMutation.isPending}
+                    onClick={() => setComposerOpen(open => !open)}
                   >
-                    {createMutation.isPending
-                      ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
-                      : <Plus className="w-3.5 h-3.5 mr-1.5" />}
-                    Publish
+                    <Plus className="w-3.5 h-3.5" aria-hidden="true" />
+                    Add an update
                   </Button>
                 </div>
-              </form>
-            </section>
-
-            <section className="space-y-3" aria-labelledby="team-updates-heading">
-              <div className="flex items-center justify-between gap-3">
-                <h2 id="team-updates-heading" className="text-lg font-semibold">Team updates</h2>
-                {showAll && (
-                  <button
-                    className="text-sm text-primary hover:underline"
-                    onClick={() => setShowAll(false)}
-                    data-testid="button-show-fewer-posts"
-                  >
-                    Show fewer
-                  </button>
-                )}
               </div>
+              {composerOpen && (
+                <form id="team-update-composer" onSubmit={submitPost} className="rounded-xl border bg-card p-4 space-y-3 shadow-sm">
+                  <div>
+                    <h3 id="team-update-composer-heading" className="font-semibold">What’s happening?</h3>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Share a Markdown update with the whole team.
+                    </p>
+                  </div>
+                  <Textarea
+                    autoFocus
+                    aria-labelledby="team-update-composer-heading"
+                    data-testid="input-team-post"
+                    value={body}
+                    onChange={e => setBody(e.target.value)}
+                    placeholder="Share an update… Markdown is supported."
+                    rows={4}
+                    disabled={createMutation.isPending}
+                  />
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <span className="text-xs text-muted-foreground">Posts are shared with everyone on the team.</span>
+                    <Button
+                      type="submit"
+                      size="sm"
+                      disabled={!body.trim() || createMutation.isPending}
+                      data-testid="button-publish-team-post"
+                    >
+                      {createMutation.isPending
+                        ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+                        : <Plus className="w-3.5 h-3.5 mr-1.5" />}
+                      Publish
+                    </Button>
+                  </div>
+                </form>
+              )}
               {postsQuery.isLoading ? (
                 <div className="flex items-center justify-center py-10 text-muted-foreground">
                   <Loader2 className="w-5 h-5 animate-spin" />
