@@ -39,12 +39,16 @@ Task proposal rules:
 - "projectName": always try to pick the best matching project name from the AVAILABLE PROJECTS list (provided below). Only omit if the context gives no signal at all.
 - "milestoneName": always try to pick the best matching milestone name from the resolved project's milestones. Only omit if no milestone fits.
 
-Task description structure (required whenever you include a "description"):
-- The description MUST be organized into exactly three markdown sections, in this order:
+Task description structure (include a "description" for every proposed task):
+- The description MUST be organized into exactly three top-level markdown sections, in this order:
   1. "## What & Why" — what the task is and why it matters. If a particular skill, tool, or approach is clearly implied (e.g. "use the Stripe integration", "needs a design pass"), name it here.
   2. "## Steps" — a numbered or bulleted list of concrete steps to take.
-  3. "## Resources / Context" — any relevant links, file names, people, documents, or other context the executor would need. If genuinely nothing applies, write "None provided."
-- Do not omit any of the three sections and do not add extra sections.
+  3. "## Resources / Context" — any relevant links, file names, people, documents, or other context the executor would need. If genuinely nothing applies, write "None provided." for the resource information, then still include the completion criteria below.
+- After the resource information, include a nested "### Definition of Done" subsection within Resources / Context for every task description.
+- Definition of Done MUST list concrete, observable, verifiable outcomes specific to the task. Use the user's supplied requirements and acceptance criteria when available; describe the resulting behavior or deliverable, not just steps taken or vague statements like "task completed."
+- Even with no supplied resources, infer meaningful completion criteria from the actionable goal; "None provided." is not a substitute for Definition of Done.
+- Do not invent resources, links, people, deadlines, numerical targets, approvals, or other unprovided commitments in the description or completion criteria.
+- Do not omit any of the three top-level sections and do not add extra top-level sections. Definition of Done is a nested subsection, not a fourth top-level section.
 
 When to propose a task vs. ask for clarification:
 - Propose a task whenever the user's message contains any actionable goal or topic — even if details are thin. Fill in the three sections as best you can from available context, making reasonable inferences.
@@ -63,7 +67,7 @@ Optionally include a "proposal" key with the following structure if you want to 
     "tasks": [
       {
         "title": "Task title (required)",
-        "description": "## What & Why\\nExplain what and why here, naming any relevant skill/approach.\\n\\n## Steps\\n1. First step\\n2. Second step\\n\\n## Resources / Context\\nRelevant files, people, links, or 'None provided.'",
+        "description": "## What & Why\\nMake the chat message box grow with drafts so longer messages are easier to review.\\n\\n## Steps\\n1. Resize the message box to fit draft content with a bounded height.\\n2. Verify typing, deletion, and sending.\\n\\n## Resources / Context\\nNone provided.\\n\\n### Definition of Done\\n- Multiline drafts expand the message box up to its height limit; longer drafts scroll internally.\\n- Deleting content or sending a message shrinks the message box to fit the remaining draft.",
         "assignedToName": "Current user's display name (default) or another person if explicitly named",
         "projectName": "Exact project name from the available projects list (omit if no signal)",
         "milestoneName": "Exact milestone name from the resolved project (omit if no signal)",

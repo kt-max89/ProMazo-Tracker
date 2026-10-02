@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useLayoutEffect } from "react";
 import { useAuth } from "@/lib/auth";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -359,6 +359,37 @@ export default function ChatPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
+  useLayoutEffect(() => {
+    const input = inputRef.current;
+    if (!input) return;
+
+    function resize() {
+      // Reset first so deletion and programmatic clearing can shrink the draft.
+      input!.style.height = "auto";
+      // A wrapped placeholder is not draft content, even in a narrow layout.
+      if (!input!.value) return;
+      const style = getComputedStyle(input!);
+      const borders = parseFloat(style.borderTopWidth) + parseFloat(style.borderBottomWidth);
+      input!.style.height = `${input!.scrollHeight + borders}px`;
+    }
+
+    resize();
+    let width: number | undefined;
+    const observer = new ResizeObserver(([entry]) => {
+      if (entry.contentRect.width !== width) {
+        width = entry.contentRect.width;
+        resize();
+      }
+    });
+    observer.observe(input);
+    // Also recompute when the viewport-height-based cap changes.
+    window.addEventListener("resize", resize);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", resize);
+    };
+  }, [query]);
+
   const { data: documents } = useQuery<any[]>({
     queryKey: ["/api/documents"],
   });
@@ -587,7 +618,7 @@ export default function ChatPage() {
         onNewChat={startNewChat}
       />
 
-      <div className="flex-1 flex flex-col min-w-0">
+      <div className="flex-1 flex flex-col min-w-0 min-h-0">
         <header className="border-b px-6 py-3 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-3">
             {!sidebarOpen && (
@@ -638,7 +669,7 @@ export default function ChatPage() {
           </div>
         </header>
 
-        <div className="flex-1 overflow-y-auto px-4 py-6">
+        <div className="flex-1 min-h-0 overflow-y-auto px-4 py-6">
           <div className="max-w-3xl mx-auto space-y-6">
             {messages.length === 0 && (
               <div className="text-center py-20">
@@ -723,7 +754,7 @@ export default function ChatPage() {
               onKeyDown={handleKeyDown}
               placeholder="Ask about tasks, projects, people, sprints, or documents..."
               rows={1}
-              className="w-full resize-none rounded-xl border border-input bg-card px-4 py-3 pr-12 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              className="block w-full min-h-[46px] max-h-[max(46px,min(240px,30dvh))] overflow-y-auto resize-none rounded-xl border border-input bg-card px-4 py-3 pr-12 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
               disabled={isStreaming}
             />
             <button

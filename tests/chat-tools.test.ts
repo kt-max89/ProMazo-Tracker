@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { db } from "../server/db";
 import { buildPrompt } from "../server/promptBuilder";
+import { validateProposal } from "../server/proposalSchema";
 import { settleReadToolCalls } from "../server/readToolExecution";
 import { runSeeTeamTool } from "../server/seeTeamTool";
 import { queryTasks } from "../server/taskService";
@@ -110,6 +111,51 @@ test("final prompt labels multiple source types and partial failures", () => {
   assert.match(String(finalMessage?.content), /PROJECTS AND MILESTONES \(live data\)/);
   assert.match(String(finalMessage?.content), /DOCUMENT CONTEXT \(retrieved evidence\)/);
   assert.match(String(finalMessage?.content), /Source unavailable: document lookup timed out/);
+});
+
+test("task prompt requires nested, verifiable completion criteria without changing proposal defaults", () => {
+  const prompt = String(buildPrompt({ message: "Draft a task" })[0].content);
+  assert.match(prompt, /include a "description" for every proposed task/);
+  assert.match(prompt, /exactly three top-level markdown sections/);
+  assert.match(prompt, /nested "### Definition of Done" subsection within Resources \/ Context/);
+  assert.match(prompt, /concrete, observable, verifiable outcomes specific to the task/);
+  assert.match(prompt, /Use the user's supplied requirements and acceptance criteria/);
+  assert.match(prompt, /Even with no supplied resources, infer meaningful completion criteria/);
+  assert.match(prompt, /Do not invent resources, links, people, deadlines, numerical targets, approvals/);
+  assert.match(prompt, /"assignedToName": always default to the CURRENT USER/);
+  assert.match(prompt, /"dueDate": always include tomorrow's date/);
+  assert.match(prompt, /Never set "status" in a proposal/);
+});
+
+test("prompt JSON example keeps three sections and Definition of Done through proposal validation and edits", () => {
+  const prompt = String(buildPrompt({ message: "Draft a task" })[0].content);
+  const exampleText = prompt.slice(prompt.indexOf('{\n  "answer"'), prompt.indexOf("\n\nIf you do not want"));
+  const example = JSON.parse(exampleText);
+  assert.deepEqual(Object.keys(example.proposal), ["type", "tasks"]);
+  const draft = example.proposal.tasks[0];
+  assert.deepEqual(Object.keys(draft), [
+    "title", "description", "assignedToName", "projectName", "milestoneName", "dueDate",
+  ]);
+  assert.deepEqual(draft.description.match(/^## .+$/gm), [
+    "## What & Why", "## Steps", "## Resources / Context",
+  ]);
+  assert.match(draft.description, /## Resources \/ Context\nNone provided\.\n\n### Definition of Done\n- .+\n- .+/);
+  const validated = validateProposal(example.proposal);
+  assert.ok(validated);
+  assert.equal(validated.tasks[0].description, draft.description);
+
+  // The review form sends the edited description back through the same validator.
+  const editedDescription = draft.description.replace(
+    "longer drafts scroll internally",
+    "longer drafts scroll internally on desktop and narrow screens",
+  );
+  const approved = validateProposal(JSON.parse(JSON.stringify({
+    type: validated.type,
+    tasks: [{ ...validated.tasks[0], description: editedDescription }],
+  })));
+  assert.ok(approved);
+  assert.equal(approved.tasks[0].description, editedDescription);
+  assert.match(approved.tasks[0].description!, /### Definition of Done/);
 });
 
 test("task query intersects text, status, blocked, project, milestone, sprint, and assignee", {
