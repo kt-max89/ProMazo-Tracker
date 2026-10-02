@@ -8,9 +8,21 @@ export type User = {
   passwordHash: string;
   role: "admin" | "user";
   displayName: string;
+  teamId: number | null;
 };
 
-export type InsertUser = Omit<User, "id">;
+export type InsertUser = Omit<User, "id" | "teamId">;
+
+export type Team = { id: number; name: string; createdAt: string };
+
+export const insertTeamSchema = z.object({
+  name: z.string().trim().min(1, "Team name is required"),
+  projectIds: z.array(z.number().int().positive()).default([]),
+});
+
+export const teamMembershipSchema = z.object({
+  teamId: z.number().int().positive().nullable(),
+});
 
 export type Document = {
   id: number;
@@ -74,6 +86,7 @@ export type Project = {
   name: string;
   description: string | null;
   timeline: string | null;
+  teamId: number | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -82,6 +95,7 @@ export type InsertProject = {
   name: string;
   description?: string | null;
   timeline?: string | null;
+  teamId?: number | null;
 };
 
 export type UpdateProject = Partial<InsertProject>;
@@ -211,6 +225,7 @@ export const insertProjectSchema = z.object({
   name: z.string().min(1, "Name is required"),
   description: z.string().nullable().optional(),
   timeline: z.string().nullable().optional(),
+  teamId: z.number().int().positive().nullable().optional(),
 });
 
 export const updateProjectSchema = insertProjectSchema.partial();

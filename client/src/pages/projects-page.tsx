@@ -10,7 +10,7 @@ import { useAuth } from "@/lib/auth";
 import {
   Plus, Loader2, Pencil, FolderOpen, Sun, Moon, LogOut,
   Zap, BookOpen, Settings, PanelLeft, CalendarDays, AlignLeft, ExternalLink,
-  Flag, Trash2, Check, X, AlertTriangle, Search
+  Flag, Trash2, Check, X, AlertTriangle, Search, UsersRound
 } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
@@ -25,12 +25,13 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import type { Project, Task, Milestone, Sprint, TrackerSettings } from "@shared/schema";
+import type { Project, Task, Milestone, Sprint, TrackerSettings, Team } from "@shared/schema";
 import { AppSidebar } from "@/components/app-sidebar";
 import { TaskFormDialog } from "@/components/task-form-dialog";
 import { SearchBar } from "@/components/search-bar";
 import { SprintFilterSelect } from "@/components/sprint-filter-select";
 import { taskMatchesSprint, type SprintFilterValue } from "@/lib/sprints";
+type TeamProject = Project & { teamId: number | null };
 
 // ─── Project form ─────────────────────────────────────────────────────────────
 
@@ -219,7 +220,7 @@ function ProjectFormDialog({
 
 // ─── Milestone inline manager (on the card) ───────────────────────────────────
 
-function MilestoneManager({ project }: { project: Project }) {
+export function MilestoneManager({ project }: { project: Project }) {
   const { toast } = useToast();
   const [addingNew, setAddingNew] = useState(false);
   const [newName, setNewName] = useState("");
@@ -228,12 +229,15 @@ function MilestoneManager({ project }: { project: Project }) {
   const [editName, setEditName] = useState("");
   const [editTimeline, setEditTimeline] = useState("");
 
-  const { data: milestones = [], isLoading } = useQuery<Milestone[]>({
+  const { data: milestones = [], isLoading, isError, refetch } = useQuery<Milestone[]>({
     queryKey: ["/api/projects", project.id, "milestones"],
     queryFn: () => apiRequest("GET", `/api/projects/${project.id}/milestones`).then(r => r.json()),
   });
 
-  const invalidate = () => queryClient.invalidateQueries({ queryKey: ["/api/projects", project.id, "milestones"] });
+  const invalidate = () => {
+    queryClient.invalidateQueries({ queryKey: ["/api/projects", project.id, "milestones"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/milestones"] });
+  };
 
   const createMs = useMutation({
     mutationFn: (data: { name: string; timeline?: string }) =>
@@ -255,6 +259,7 @@ function MilestoneManager({ project }: { project: Project }) {
       invalidate();
       // Also refresh tasks since milestone references may be cleared
       queryClient.invalidateQueries({ queryKey: ["/api/tasks"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/tasks", "archived"] });
     },
     onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
@@ -283,6 +288,11 @@ function MilestoneManager({ project }: { project: Project }) {
       </div>
 
       {isLoading && <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground mx-auto" />}
+      {isError && (
+        <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-xs text-destructive">
+          Couldn’t load milestones. <button className="underline" onClick={() => refetch()}>Try again</button>
+        </div>
+      )}
 
       {milestones.map(m => (
         <div key={m.id} className="rounded-lg px-2 py-1.5 hover:bg-muted/50 transition-colors group">
@@ -388,6 +398,7 @@ function MilestoneManager({ project }: { project: Project }) {
 
 function ProjectCard({
   project,
+  teams,
   tasks,
   sprints,
   onEdit,
@@ -395,6 +406,7 @@ function ProjectCard({
   onOpenTask,
 }: {
   project: Project;
+  teams: Team[];
   tasks: Task[];
   sprints: Sprint[];
   onEdit: () => void;
@@ -420,7 +432,7 @@ function ProjectCard({
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-center gap-2 min-w-0">
           <FolderOpen className="w-5 h-5 text-primary shrink-0" />
-          <h2 className="font-semibold text-base truncate">{project.name}</h2>
+          <Link href={`/projects/${project.id}`} className="font-semibold text-base truncate hover:text-primary">{project.name}</Link>
         </div>
         <button
           onClick={onEdit}
@@ -438,6 +450,11 @@ function ProjectCard({
           <p className="leading-snug">{project.description}</p>
         </div>
       )}
+
+      <div className="flex items-center gap-2">
+        <UsersRound className="h-4 w-4 text-primary" />
+        <span className="rounded-full bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary">{teams.find(t => t.id === project.teamId)?.name ?? "Unassigned"}</span>
+      </div>
 
       {/* timeline */}
       {project.timeline && (
@@ -508,9 +525,10 @@ export default function ProjectsPage() {
   const [sprintFilter, setSprintFilter] = useState<SprintFilterValue>("current");
   const { toast } = useToast();
 
-  const { data: projects = [], isLoading: projectsLoading } = useQuery<Project[]>({
+  const { data: projects = [], isLoading: projectsLoading, isError: projectsError, refetch: refetchProjects } = useQuery<TeamProject[]>({
     queryKey: ["/api/projects"],
   });
+  const { data: teams = [] } = useQuery<Team[]>({ queryKey: ["/api/teams"] });
 
   const { data: allTasks = [] } = useQuery<Task[]>({
     queryKey: ["/api/tasks"],
@@ -521,17 +539,6 @@ export default function ProjectsPage() {
   const { data: sprintSettings } = useQuery<TrackerSettings>({
     queryKey: ["/api/sprint-settings"],
     refetchInterval: 30_000,
-  });
-
-  const createNextSprintMutation = useMutation({
-    mutationFn: () => apiRequest("POST", "/api/sprints/next").then(r => r.json()),
-    onSuccess: (sprint: Sprint) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/sprints"] });
-      toast({ title: `Sprint ${sprint.number} added` });
-    },
-    onError: (err: any) => {
-      toast({ title: "Error", description: err.message, variant: "destructive" });
-    },
   });
 
   const sprintFilteredTasks = allTasks.filter(t =>
@@ -633,19 +640,6 @@ export default function ProjectsPage() {
             sprints={sprints}
             testId="select-sprint-filter"
           />
-          <Button
-            size="sm"
-            variant="outline"
-            className="gap-1.5"
-            onClick={() => createNextSprintMutation.mutate()}
-            disabled={createNextSprintMutation.isPending}
-            data-testid="button-add-next-sprint"
-          >
-            {createNextSprintMutation.isPending
-              ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-              : <Plus className="w-3.5 h-3.5" />}
-            Add Sprint {(sprints[sprints.length - 1]?.number ?? 67) + 1}
-          </Button>
           <SearchBar
             data-testid="input-project-search"
             value={searchQuery}
@@ -660,6 +654,11 @@ export default function ProjectsPage() {
           {projectsLoading ? (
             <div className="flex items-center justify-center h-40">
               <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+            </div>
+          ) : projectsError ? (
+            <div className="mx-auto max-w-lg rounded-xl border border-destructive/30 bg-destructive/5 p-6 text-center">
+              <p className="text-sm text-destructive">Projects couldn’t be loaded.</p>
+              <Button className="mt-3" variant="outline" size="sm" onClick={() => refetchProjects()}>Try again</Button>
             </div>
           ) : visibleProjects.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-40 gap-3 text-muted-foreground">
@@ -678,6 +677,7 @@ export default function ProjectsPage() {
                 <ProjectCard
                   key={project.id}
                   project={project}
+                  teams={teams}
                   tasks={sprintFilteredTasks.filter(t => t.projectId === project.id)}
                   sprints={sprints}
                   onEdit={() => setEditProject(project)}

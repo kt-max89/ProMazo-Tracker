@@ -7,6 +7,7 @@ type User = {
   email: string;
   role: string;
   displayName: string;
+  teamId: number | null;
 };
 
 type AuthContextType = {

@@ -199,7 +199,23 @@ async function repairTaskUserDeleteRules(): Promise<void> {
   `);
 }
 
+export async function initializeTeams(): Promise<void> {
+  // Additive and transactional: old records remain unassigned and intact.
+  await db.transaction(async tx => {
+    await tx.execute(sql`
+      CREATE TABLE IF NOT EXISTS teams (
+        id SERIAL PRIMARY KEY,
+        name TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      )
+    `);
+    await tx.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS team_id INTEGER REFERENCES teams(id)`);
+    await tx.execute(sql`ALTER TABLE projects ADD COLUMN IF NOT EXISTS team_id INTEGER REFERENCES teams(id)`);
+  });
+}
+
 export async function runMigrations(): Promise<void> {
+  await initializeTeams();
   await clearDocumentAllowedUsers();
   await initializeSprints();
   await initializeTeamPosts();

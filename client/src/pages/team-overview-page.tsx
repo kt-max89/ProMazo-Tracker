@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import ReactMarkdown from "react-markdown";
 import { Link, useLocation } from "wouter";
@@ -17,6 +17,7 @@ import {
   Zap,
   ClipboardCheck,
   Trash2,
+  ChevronRight,
 } from "lucide-react";
 import { AppSidebar } from "@/components/app-sidebar";
 import { Button } from "@/components/ui/button";
@@ -25,7 +26,10 @@ import { useAuth } from "@/lib/auth";
 import { useTheme } from "@/components/theme-provider";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import type { Project, SprintReflection, TeamPost } from "@shared/schema";
+import type { Project, SprintReflection, TeamPost, Team } from "@shared/schema";
+import type { Sprint, TrackerSettings } from "@shared/schema";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ReflectionDialog } from "@/components/reflection-dialog";
 import { ReflectionDetailDialog } from "@/components/reflection-detail-dialog";
 import { ReflectionsTable } from "@/components/reflections-table";
@@ -39,6 +43,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+
+type TeamProject = Project & { teamId: number | null };
 
 function formatDateTime(iso: string): string {
   return new Date(iso).toLocaleString(undefined, {
@@ -58,13 +64,75 @@ export default function TeamOverviewPage() {
   const [reflectionOpen, setReflectionOpen] = useState(false);
   const [selectedReflection, setSelectedReflection] = useState<SprintReflection | null>(null);
   const [postToDelete, setPostToDelete] = useState<TeamPost | null>(null);
+  const [teamName, setTeamName] = useState("");
+  const [wizardStep, setWizardStep] = useState<0 | 1 | 2>(0);
+  const [selectedProjectIds, setSelectedProjectIds] = useState<number[]>([]);
 
   const postsQuery = useQuery<TeamPost[]>({
     queryKey: ["/api/team-posts", showAll],
     queryFn: () => apiRequest("GET", `/api/team-posts${showAll ? "?all=true" : ""}`).then(r => r.json()),
   });
-  const projectsQuery = useQuery<Project[]>({
+  const projectsQuery = useQuery<TeamProject[]>({
     queryKey: ["/api/projects"],
+  });
+  useEffect(() => {
+    if (wizardStep !== 2 || !projectsQuery.data) return;
+    const available = new Set(projectsQuery.data.filter(project => project.teamId == null).map(project => project.id));
+    setSelectedProjectIds(ids => ids.filter(id => available.has(id)));
+  }, [wizardStep, projectsQuery.data]);
+  const teamsQuery = useQuery<Team[]>({ queryKey: ["/api/teams"] });
+  const sprintsQuery = useQuery<Sprint[]>({ queryKey: ["/api/sprints"] });
+  const sprintSettingsQuery = useQuery<TrackerSettings>({ queryKey: ["/api/sprint-settings"], refetchInterval: 30_000 });
+  const membershipMutation = useMutation({
+    mutationFn: (teamId: number | null) => apiRequest("PATCH", "/api/teams/membership", { teamId }).then(r => r.json()),
+    onSuccess: (updated: any) => {
+      queryClient.setQueryData(["/api/auth/me"], updated);
+      queryClient.invalidateQueries({ queryKey: ["/api/teams"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/tasks"] });
+      toast({ title: updated.teamId == null ? "You left the team" : "Team membership updated" });
+    },
+    onError: (err: any) => toast({ title: "Could not update membership", description: err.message, variant: "destructive" }),
+  });
+  const createTeamMutation = useMutation({
+    mutationFn: () => apiRequest("POST", "/api/teams", { name: teamName.trim(), projectIds: selectedProjectIds }).then(r => r.json()),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/teams"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/tasks"] });
+      setTeamName(""); setSelectedProjectIds([]); setWizardStep(0);
+      toast({ title: "Team workspace created" });
+    },
+    onError: (err: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+      toast({ title: "Could not create team", description: err.message || "A selected project may have been claimed. Refresh and try again.", variant: "destructive" });
+    },
+  });
+  const currentSprintMutation = useMutation({
+    mutationFn: (sprintId: number) => apiRequest("PATCH", "/api/sprint-settings/current", { sprintId }).then(r => r.json()),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/sprint-settings"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/sprints"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/tasks"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/tasks", "archived"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/reflections"] });
+      toast({ title: "Current sprint updated" });
+    },
+    onError: (err: any) => toast({ title: "Could not update current sprint", description: err.message, variant: "destructive" }),
+  });
+  const nextSprintMutation = useMutation({
+    mutationFn: () => apiRequest("POST", "/api/sprints/next").then(r => r.json() as Promise<Sprint>),
+    onSuccess: (sprint) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/sprints"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/tasks"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/tasks", "archived"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/reflections"] });
+      toast({ title: `Sprint ${sprint.number} added` });
+    },
+    onError: (err: any) => toast({ title: "Could not create sprint", description: err.message, variant: "destructive" }),
   });
   const reflectionsQuery = useQuery<SprintReflection[]>({
     queryKey: ["/api/reflections/recent"],
@@ -115,12 +183,12 @@ export default function TeamOverviewPage() {
   }
 
   return (
-    <div className="h-screen flex bg-background" data-testid="team-overview-page">
+    <div className="min-h-[100dvh] flex bg-background" data-testid="team-overview-page">
       <AppSidebar open={sidebarOpen} onToggle={setSidebarOpen} activePage="team-overview" />
 
       <div className="flex-1 flex flex-col min-w-0">
-        <header className="border-b px-6 py-3 flex items-center justify-between shrink-0">
-          <div className="flex items-center gap-3">
+        <header className="border-b px-3 py-2.5 sm:px-6 sm:py-3 flex items-center justify-between gap-2 shrink-0">
+          <div className="flex min-w-0 items-center gap-2 sm:gap-3">
             {!sidebarOpen && (
               <button
                 data-testid="button-open-sidebar"
@@ -132,28 +200,28 @@ export default function TeamOverviewPage() {
               </button>
             )}
             <UsersRound className="w-5 h-5 text-primary" />
-            <h1 className="font-semibold text-lg">Team Overview</h1>
+            <h1 className="truncate font-semibold text-base sm:text-lg">Team Overview</h1>
           </div>
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-muted-foreground mr-2">{user?.displayName}</span>
-            <button onClick={toggleTheme} className="p-2 rounded-lg hover:bg-muted transition-colors" title="Toggle theme">
+          <div className="flex shrink-0 items-center gap-0.5 sm:gap-2">
+            <span className="hidden text-sm text-muted-foreground sm:mr-2 sm:inline">{user?.displayName}</span>
+            <button onClick={toggleTheme} className="rounded-lg p-1.5 hover:bg-muted transition-colors sm:p-2" title="Toggle theme">
               {theme === "light" ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
             </button>
             <Link href="/history">
-              <button className="p-2 rounded-lg hover:bg-muted transition-colors" title="Citation History">
+              <button className="rounded-lg p-1.5 hover:bg-muted transition-colors sm:p-2" title="Citation History">
                 <BookOpen className="w-4 h-4" />
               </button>
             </Link>
             {user?.role === "admin" && (
               <Link href="/admin">
-                <button className="p-2 rounded-lg hover:bg-muted transition-colors" title="Admin">
+                <button className="rounded-lg p-1.5 hover:bg-muted transition-colors sm:p-2" title="Admin">
                   <Settings className="w-4 h-4" />
                 </button>
               </Link>
             )}
             <button
               onClick={async () => { await logout(); setLocation("/auth"); }}
-              className="p-2 rounded-lg hover:bg-muted transition-colors"
+              className="rounded-lg p-1.5 hover:bg-muted transition-colors sm:p-2"
               title="Logout"
             >
               <LogOut className="w-4 h-4" />
@@ -163,6 +231,43 @@ export default function TeamOverviewPage() {
 
         <main className="flex-1 overflow-auto">
           <div className="max-w-4xl mx-auto w-full px-6 py-8 space-y-8">
+            <section className="rounded-xl border bg-card p-4 sm:p-5">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                <div><p className="text-xs font-semibold uppercase tracking-[.15em] text-primary">Shared tracker setting</p><h2 className="mt-1 font-semibold">Current sprint</h2></div>
+                <div className="flex flex-wrap items-center gap-2 sm:ml-auto">
+                  <Select disabled={sprintSettingsQuery.isLoading||sprintSettingsQuery.isError||currentSprintMutation.isPending||(sprintsQuery.data?.length??0)===0} value={sprintSettingsQuery.data?.currentSprintId != null ? String(sprintSettingsQuery.data.currentSprintId) : undefined} onValueChange={value => {
+                    const id = Number(value); const sprint = sprintsQuery.data?.find(item => item.id === id);
+                    if (sprint && id !== sprintSettingsQuery.data?.currentSprintId && window.confirm(`Set Sprint ${sprint.number} as the current sprint for everyone?`)) currentSprintMutation.mutate(id);
+                  }}>
+                    <SelectTrigger className="w-40" aria-label="Current sprint">{currentSprintMutation.isPending?<span className="text-xs text-muted-foreground">Updating…</span>:<SelectValue placeholder={sprintSettingsQuery.isLoading||sprintsQuery.isLoading?"Loading…":"Select sprint"}/>}</SelectTrigger>
+                    <SelectContent>{(sprintsQuery.data ?? []).map(sprint=><SelectItem key={sprint.id} value={String(sprint.id)}>Sprint {sprint.number}</SelectItem>)}</SelectContent>
+                  </Select>
+                  {sprintsQuery.isError && <Button size="sm" variant="ghost" onClick={()=>sprintsQuery.refetch()}>Retry sprints</Button>}
+                  {sprintSettingsQuery.isError && <Button size="sm" variant="ghost" onClick={()=>sprintSettingsQuery.refetch()}>Retry sprint settings</Button>}
+                  <Button variant="outline" size="sm" onClick={()=>nextSprintMutation.mutate()} disabled={nextSprintMutation.isPending}>
+                    {nextSprintMutation.isPending?<Loader2 className="mr-1.5 h-4 w-4 animate-spin"/>:<Plus className="mr-1.5 h-4 w-4"/>}
+                    Add Sprint {(sprintsQuery.data?.[sprintsQuery.data.length-1]?.number ?? 67)+1}
+                  </Button>
+                </div>
+              </div>
+            </section>
+            <section className="rounded-xl border bg-card p-5 sm:p-6">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                <div><p className="text-xs font-semibold uppercase tracking-[.16em] text-primary">Shared workspace</p><h2 className="mt-1 text-xl font-semibold">Teams</h2><p className="mt-1 text-sm text-muted-foreground">Organize projects and colleagues. Every workspace remains visible to everyone.</p></div>
+                <Button size="sm" onClick={()=>{setWizardStep(0);setTeamName("");setSelectedProjectIds([]);setWizardStep(1);}}><Plus className="mr-1.5 h-4 w-4"/>Create team</Button>
+              </div>
+              {teamsQuery.isLoading ? <div className="mt-5 h-20 animate-pulse rounded-lg bg-muted"/> : teamsQuery.isError ? <div className="mt-5 rounded-lg border border-destructive/30 p-4 text-sm text-destructive">Couldn’t load teams. <button className="underline" onClick={()=>teamsQuery.refetch()}>Retry</button></div> : (teamsQuery.data?.length ?? 0) === 0 ? <div className="mt-5 rounded-lg border border-dashed p-5 text-sm text-muted-foreground">No teams yet. Start a workspace for a group of colleagues.</div> : <div className="mt-5 divide-y rounded-lg border">{teamsQuery.data?.map(team=><div key={team.id} className="flex flex-wrap items-center gap-3 px-4 py-3"><div className="min-w-0 flex-1"><p className="truncate font-medium">{team.name}</p><p className="text-xs text-muted-foreground">{projectsQuery.data?.filter(p=>p.teamId===team.id).length ?? 0} projects</p></div>{user?.teamId===team.id ? <span className="rounded-full bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary">Your team</span> : <Button size="sm" variant="outline" disabled={membershipMutation.isPending} onClick={()=>membershipMutation.mutate(team.id)}>Join team</Button>}</div>)}</div>}
+              {user?.teamId != null && <div className="mt-4 flex flex-wrap items-center gap-3 border-t pt-4"><span className="text-sm text-muted-foreground">Current membership</span><span className="font-medium">{teamsQuery.data?.find(t=>t.id===user.teamId)?.name ?? "Your team"}</span><Button variant="ghost" size="sm" disabled={membershipMutation.isPending} onClick={()=>membershipMutation.mutate(null)}>Leave team</Button></div>}
+              {wizardStep > 0 && <div className="mt-5 rounded-xl border bg-muted/20 p-4 sm:p-5">
+                <p className="text-xs font-semibold uppercase tracking-[.14em] text-muted-foreground">Create team · {wizardStep === 1 ? "01 / 02" : "02 / 02"}</p>
+                {wizardStep === 1 ? <div className="mt-3 space-y-4"><label className="block text-sm font-medium">What should this team be called?<Input autoFocus disabled={createTeamMutation.isPending} className="mt-2" value={teamName} onChange={e=>setTeamName(e.target.value)} placeholder="e.g. Platform delivery" onKeyDown={e=>{if(e.key==="Enter"&&teamName.trim()&&!createTeamMutation.isPending)setWizardStep(2);}}/></label><div className="flex justify-end gap-2"><Button variant="ghost" disabled={createTeamMutation.isPending} onClick={()=>setWizardStep(0)}>Cancel</Button><Button disabled={!teamName.trim()||createTeamMutation.isPending} onClick={()=>setWizardStep(2)}>Continue<ChevronRight className="ml-1 h-4 w-4"/></Button></div></div> :
+                  <div className="space-y-4"><div><h3 className="font-medium">Claim any unassigned projects?</h3><p className="mt-1 text-sm text-muted-foreground">You can skip this and assign projects later.</p></div>
+                    {projectsQuery.isLoading ? <div className="space-y-2 rounded-lg border p-3"><div className="h-4 w-2/3 animate-pulse rounded bg-muted"/><div className="h-4 w-1/2 animate-pulse rounded bg-muted"/></div>
+                    : projectsQuery.isError ? <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">Projects couldn’t be loaded, so we can’t safely offer project claims. <button className="ml-1 underline" onClick={()=>projectsQuery.refetch()}>Retry</button></div>
+                    : <div className="max-h-48 space-y-1 overflow-y-auto rounded-lg border bg-background p-2">{(projectsQuery.data??[]).filter(p=>p.teamId==null).length===0?<p className="p-3 text-sm text-muted-foreground">There are no unassigned projects.</p>:(projectsQuery.data??[]).filter(p=>p.teamId==null).map(project=><label key={project.id} className="flex cursor-pointer items-center gap-3 rounded-md px-3 py-2 text-sm hover:bg-muted"><input type="checkbox" disabled={createTeamMutation.isPending} checked={selectedProjectIds.includes(project.id)} onChange={e=>setSelectedProjectIds(ids=>e.target.checked?[...ids,project.id]:ids.filter(id=>id!==project.id))}/><span>{project.name}</span></label>)}</div>}
+                    <div className="flex flex-wrap justify-between gap-2"><Button variant="ghost" disabled={createTeamMutation.isPending} onClick={()=>setWizardStep(1)}>Back</Button><div className="flex gap-2"><Button variant="ghost" disabled={createTeamMutation.isPending} onClick={()=>{setWizardStep(0);setTeamName("");setSelectedProjectIds([]);}}>Cancel</Button><Button disabled={createTeamMutation.isPending||projectsQuery.isLoading||projectsQuery.isError} onClick={()=>createTeamMutation.mutate()}>{createTeamMutation.isPending?<Loader2 className="mr-2 h-4 w-4 animate-spin"/>:null}Create team</Button></div></div></div>}
+              </div>}
+            </section>
             <section className="space-y-3">
               <div>
                 <h2 className="text-2xl font-semibold tracking-tight">What’s happening?</h2>
@@ -287,20 +392,30 @@ export default function TeamOverviewPage() {
                   <Button variant="outline" size="sm">Open Projects workspace</Button>
                 </Link>
               </div>
-              {projectsQuery.isLoading ? (
+              {projectsQuery.isLoading || teamsQuery.isLoading ? (
                 <div className="flex items-center justify-center py-8 text-muted-foreground">
                   <Loader2 className="w-5 h-5 animate-spin" />
+                </div>
+              ) : projectsQuery.isError || teamsQuery.isError ? (
+                <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-5 text-sm text-destructive">
+                  We couldn’t load project assignments. <button className="underline" onClick={() => { projectsQuery.refetch(); teamsQuery.refetch(); }}>Try again</button>
                 </div>
               ) : projectsQuery.data?.length === 0 ? (
                 <div className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">
                   No projects yet. Open the Projects workspace to create one.
                 </div>
               ) : (
-                <div className="divide-y rounded-xl border bg-card">
-                  {projectsQuery.data?.map(project => (
+                <div className="space-y-4">
+                  {[...(teamsQuery.data ?? []).map(team => ({ id: team.id as number | null, name: team.name })), { id: null, name: "Unassigned" }]
+                    .filter(group => projectsQuery.data?.some(project => project.teamId === group.id))
+                    .map(group => (
+                    <div key={group.id ?? "unassigned"} className="overflow-hidden rounded-xl border bg-card">
+                      <h3 className="border-b bg-muted/30 px-4 py-2 text-sm font-semibold">{group.name}</h3>
+                      <div className="divide-y">
+                  {projectsQuery.data?.filter(project => project.teamId === group.id).map(project => (
                     <Link
                       key={project.id}
-                      href="/projects"
+                      href={`/projects/${project.id}`}
                       className="flex items-center gap-3 px-4 py-3 hover:bg-muted/50 transition-colors"
                     >
                       <FolderOpen className="w-4 h-4 text-primary shrink-0" />
@@ -309,6 +424,9 @@ export default function TeamOverviewPage() {
                         <span className="text-xs text-muted-foreground truncate ml-auto">{project.description}</span>
                       )}
                     </Link>
+                  ))}
+                      </div>
+                    </div>
                   ))}
                 </div>
               )}

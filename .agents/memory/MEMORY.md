@@ -6,3 +6,5 @@
 - [Drizzle table rename prompts](drizzle-rename-prompts.md) — review schema-push rename guesses carefully; unrelated existing tables can be offered as a new table's predecessor.
 - [Chat task-proposal boundary](chat-task-proposal-boundary.md) — improve read-only chat capabilities without changing proposal JSON, defaults, event order, approval, or review UI.
 - [Browser verification availability](browser-verification.md) — the documented testing worker may be unavailable; direct Playwright can verify signed-in flows without bypassing auth.
+- [Team scope intent](team-scope-intent.md) — teams organize work without restricting access; posts, reflections, and current sprint intentionally remain global.
+- [Asynchronous Radix selects](radix-select-async.md) — empty native form events during option loading are not explicit reference-clearing actions.

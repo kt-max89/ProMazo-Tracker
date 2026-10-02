@@ -66,6 +66,7 @@ function mapUser(row: typeof usersTable.$inferSelect): User {
     passwordHash: row.passwordHash,
     role: row.role as User["role"],
     displayName: row.displayName,
+    teamId: row.teamId,
   };
 }
 

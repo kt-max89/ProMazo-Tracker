@@ -14,6 +14,7 @@ import ProjectsPage from "@/pages/projects-page";
 import TeamOverviewPage from "@/pages/team-overview-page";
 import MyTasksPage from "@/pages/my-tasks-page";
 import TaskPage from "@/pages/task-page";
+import ProjectPage from "@/pages/project-page";
 import ReflectionsPage from "@/pages/reflections-page";
 import NotFound from "@/pages/not-found";
 import { Loader2 } from "lucide-react";
@@ -55,6 +56,7 @@ function Router() {
       <Route path="/tasks" component={() => <ProtectedRoute component={TasksPage} />} />
       <Route path="/tasks/:id" component={() => <ProtectedRoute component={TaskPage} />} />
       <Route path="/projects" component={() => <ProtectedRoute component={ProjectsPage} />} />
+      <Route path="/projects/:id" component={() => <ProtectedRoute component={ProjectPage} />} />
       <Route path="/team-overview" component={() => <ProtectedRoute component={TeamOverviewPage} />} />
       <Route path="/reflections" component={() => <ProtectedRoute component={ReflectionsPage} />} />
       <Route path="/my-tasks" component={() => <ProtectedRoute component={MyTasksPage} />} />

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/lib/auth";
@@ -14,7 +14,7 @@ import { Button } from "@/components/ui/button";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue
 } from "@/components/ui/select";
-import type { Task, Project, Milestone, Sprint, TrackerSettings, TaskStatus } from "@shared/schema";
+import type { Task, Project, Milestone, Sprint, TrackerSettings, TaskStatus, Team } from "@shared/schema";
 import { AppSidebar } from "@/components/app-sidebar";
 import { TaskFormDialog } from "@/components/task-form-dialog";
 import { TaskDetailPanel } from "@/components/task-detail-panel";
@@ -170,8 +170,10 @@ export default function TasksPage() {
   const [projectFilter, setProjectFilter] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [sprintFilter, setSprintFilter] = useState<SprintFilterValue>("current");
+  const [teamScope, setTeamScope] = useState("initial");
+  const [scopeInitialized, setScopeInitialized] = useState(false);
 
-  const { data: tasks = [], isLoading } = useQuery<Task[]>({
+  const { data: tasks = [], isLoading, isError: tasksError, refetch: refetchTasks } = useQuery<Task[]>({
     queryKey: showArchived ? ["/api/tasks", "archived"] : ["/api/tasks"],
   });
 
@@ -179,9 +181,27 @@ export default function TasksPage() {
     queryKey: ["/api/users"],
   });
 
-  const { data: projects = [] } = useQuery<Project[]>({
+  const { data: projects = [], isLoading: projectsLoading, isError: projectsError, refetch: refetchProjects } = useQuery<Project[]>({
     queryKey: ["/api/projects"],
   });
+  const { data: teams = [], isLoading: teamsLoading, isError: teamsError, refetch: refetchTeams } = useQuery<Team[]>({ queryKey: ["/api/teams"] });
+
+  useEffect(() => {
+    if (scopeInitialized || !user || teamsLoading) return;
+    setTeamScope(user.teamId != null ? "my-team" : "all");
+    setScopeInitialized(true);
+  }, [user, scopeInitialized, teamsLoading]);
+  useEffect(() => {
+    if (teamScope === "initial") return;
+    if (projectFilter === "all") return;
+    const project = projects.find(item => String(item.id) === projectFilter);
+    if (!project) return;
+    const inScope = teamScope === "all"
+      || (teamScope === "unassigned" && project.teamId == null)
+      || (teamScope === "my-team" && project.teamId === user?.teamId)
+      || teamScope === `team:${project.teamId}`;
+    if (!inScope) setProjectFilter("all");
+  }, [teamScope, projects, projectFilter, user?.teamId]);
 
   const { data: milestones = [] } = useQuery<Milestone[]>({
     queryKey: ["/api/milestones"],
@@ -217,27 +237,30 @@ export default function TasksPage() {
     },
   });
 
-  const currentSprintMutation = useMutation({
-    mutationFn: (sprintId: number) =>
-      apiRequest("PATCH", "/api/sprint-settings/current", { sprintId }).then(r => r.json()),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/sprint-settings"] });
-      toast({ title: "Current sprint updated" });
-    },
-    onError: (err: any) => {
-      toast({ title: "Error", description: err.message, variant: "destructive" });
-    },
-  });
-
   function handleDrop(taskId: number, newStatus: TaskStatus) {
     const task = tasks.find(t => t.id === taskId);
     if (!task || task.status === newStatus) return;
     changeStatusMutation.mutate({ id: taskId, status: newStatus });
   }
 
-  const projectFilteredTasks = projectFilter === "all"
+  const scopedProjectIds = new Set(projects.filter(project =>
+    teamScope === "all" || teamScope === "initial"
+      ? true
+      : teamScope === "unassigned"
+        ? project.teamId == null
+        : teamScope === "my-team"
+          ? user?.teamId != null && project.teamId === user.teamId
+          : teamScope.startsWith("team:") && project.teamId === Number(teamScope.slice(5)),
+  ).map(project => project.id));
+  const scopedTasks = teamScope === "all" || teamScope === "initial"
     ? tasks
-    : tasks.filter(t => t.projectId === parseInt(projectFilter));
+    : teamScope === "unassigned"
+      ? tasks.filter(task => task.projectId == null || scopedProjectIds.has(task.projectId))
+      : tasks.filter(task => task.projectId != null && scopedProjectIds.has(task.projectId));
+  const projectFilteredTasks = projectFilter === "all"
+    ? scopedTasks
+    : scopedTasks.filter(t => t.projectId === parseInt(projectFilter));
+  const scopedProjects = projects.filter(project => scopedProjectIds.has(project.id));
   const sprintAndProjectFilteredTasks = projectFilteredTasks.filter(t =>
     taskMatchesSprint(t, sprintFilter, sprintSettings?.currentSprintId),
   );
@@ -332,35 +355,14 @@ export default function TasksPage() {
               Archived
             </button>
           </div>
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-medium text-muted-foreground whitespace-nowrap">Current</span>
-            <Select
-              value={sprintSettings?.currentSprintId != null ? String(sprintSettings.currentSprintId) : undefined}
-              onValueChange={(value) => {
-                const sprintId = parseInt(value);
-                const sprint = sprints.find(item => item.id === sprintId);
-                if (!sprint || sprintId === sprintSettings?.currentSprintId) return;
-                if (window.confirm(`Set Sprint ${sprint.number} as the current sprint for everyone?`)) {
-                  currentSprintMutation.mutate(sprintId);
-                }
-              }}
-            >
-              <SelectTrigger
-                data-testid="select-current-sprint"
-                className="h-8 text-sm w-36"
-                disabled={currentSprintMutation.isPending || sprints.length === 0}
-              >
-                <SelectValue placeholder="Current sprint" />
-              </SelectTrigger>
-              <SelectContent>
-                {sprints.map(sprint => (
-                  <SelectItem key={sprint.id} value={String(sprint.id)}>
-                    Sprint {sprint.number}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          <Select value={teamScope} onValueChange={value => setTeamScope(value)}>
+            <SelectTrigger data-testid="select-team-scope" className="h-8 w-40 text-sm"><SelectValue placeholder="Team scope"/></SelectTrigger>
+            <SelectContent>
+              {user?.teamId != null && <SelectItem value="my-team">My team</SelectItem>}
+              {teams.map(team=><SelectItem key={team.id} value={`team:${team.id}`}>{team.name}</SelectItem>)}
+              <SelectItem value="all">All teams</SelectItem><SelectItem value="unassigned">Unassigned</SelectItem>
+            </SelectContent>
+          </Select>
           <SprintFilterSelect
             value={sprintFilter}
             onValueChange={setSprintFilter}
@@ -378,7 +380,7 @@ export default function TasksPage() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All projects</SelectItem>
-                {projects.map(p => (
+                {scopedProjects.map(p => (
                   <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>
                 ))}
               </SelectContent>
@@ -400,9 +402,14 @@ export default function TasksPage() {
         <div className="flex-1 flex overflow-hidden">
           {/* Board / archived area */}
           <div className="flex-1 overflow-auto p-6 transition-all duration-300">
-            {isLoading ? (
+            {isLoading || projectsLoading || teamsLoading || teamScope === "initial" ? (
               <div className="flex items-center justify-center h-40">
                 <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+              </div>
+            ) : tasksError || projectsError || teamsError ? (
+              <div className="mx-auto max-w-lg rounded-xl border border-destructive/30 bg-destructive/5 p-6 text-center">
+                <p className="text-sm text-destructive">Work couldn’t be loaded. The board is unavailable rather than empty.</p>
+                <Button className="mt-3" variant="outline" size="sm" onClick={() => { refetchTasks(); refetchProjects(); refetchTeams(); }}>Try again</Button>
               </div>
             ) : showArchived ? (
               <div>

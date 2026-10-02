@@ -16,6 +16,7 @@ declare global {
       role: string;
       displayName: string;
       passwordHash: string;
+      teamId: number | null;
     }
   }
 }

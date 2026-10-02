@@ -181,7 +181,7 @@ export function TaskFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={v => !v && onClose()}>
-      <DialogContent className="max-w-md" data-testid="dialog-task-form">
+      <DialogContent className="max-w-md max-h-[90dvh] overflow-y-auto" data-testid="dialog-task-form">
         <DialogHeader>
           <DialogTitle>{isEdit ? "Edit task" : "New task"}</DialogTitle>
           <DialogDescription className="sr-only">

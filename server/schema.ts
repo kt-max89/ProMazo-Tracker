@@ -19,12 +19,19 @@ import { sql } from "drizzle-orm";
 
 // ─── Users ───────────────────────────────────────────────────────────────────
 
+export const teamsTable = pgTable("teams", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 export const usersTable = pgTable("users", {
   id: serial("id").primaryKey(),
   email: text("email").notNull().unique(),
   passwordHash: text("password_hash").notNull(),
   role: text("role").notNull().default("user"),
   displayName: text("display_name").notNull(),
+  teamId: integer("team_id").references(() => teamsTable.id),
 });
 
 // ─── Documents & chunks ──────────────────────────────────────────────────────
@@ -111,6 +118,7 @@ export const projectsTable = pgTable("projects", {
   name: text("name").notNull(),
   description: text("description"),
   timeline: text("timeline"),
+  teamId: integer("team_id").references(() => teamsTable.id),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),

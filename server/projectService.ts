@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import { db } from "./db";
 import { projectsTable } from "./schema";
 import type { Project, InsertProject, UpdateProject } from "@shared/schema";
+import { getTeam } from "./teamService";
 
 // ─── Row mapper ───────────────────────────────────────────────────────────────
 
@@ -11,6 +12,7 @@ function mapProject(row: typeof projectsTable.$inferSelect): Project {
     name: row.name,
     description: row.description,
     timeline: row.timeline,
+    teamId: row.teamId,
     createdAt: row.createdAt instanceof Date ? row.createdAt.toISOString() : String(row.createdAt),
     updatedAt: row.updatedAt instanceof Date ? row.updatedAt.toISOString() : String(row.updatedAt),
   };
@@ -30,6 +32,7 @@ export async function getProject(id: number): Promise<Project | undefined> {
 
 export async function createProject(input: InsertProject): Promise<Project> {
   if (!input.name?.trim()) throw new Error("Name is required");
+  if (input.teamId != null && !(await getTeam(input.teamId))) throw new Error("Team not found");
 
   const [row] = await db
     .insert(projectsTable)
@@ -37,6 +40,7 @@ export async function createProject(input: InsertProject): Promise<Project> {
       name: input.name.trim(),
       description: input.description ?? null,
       timeline: input.timeline ?? null,
+      teamId: input.teamId ?? null,
     })
     .returning();
   return mapProject(row);
@@ -44,6 +48,7 @@ export async function createProject(input: InsertProject): Promise<Project> {
 
 export async function updateProject(id: number, input: UpdateProject): Promise<Project> {
   if (input.name !== undefined && !input.name?.trim()) throw new Error("Name is required");
+  if (input.teamId != null && !(await getTeam(input.teamId))) throw new Error("Team not found");
 
   const set: Partial<typeof projectsTable.$inferInsert> & { updatedAt: Date } = {
     updatedAt: new Date(),
@@ -51,6 +56,7 @@ export async function updateProject(id: number, input: UpdateProject): Promise<P
   if (input.name !== undefined) set.name = input.name.trim();
   if (input.description !== undefined) set.description = input.description;
   if (input.timeline !== undefined) set.timeline = input.timeline;
+  if (input.teamId !== undefined) set.teamId = input.teamId;
 
   const [updated] = await db
     .update(projectsTable)

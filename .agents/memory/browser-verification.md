@@ -8,3 +8,5 @@ Do not assume the documented specialized testing worker is available in every ta
 **Why:** Interactive composer sizing and signed-in proposal approval cannot be established by a signed-out screenshot or prompt unit tests alone.
 
 **How to apply:** If the specialized worker is unavailable, use a focused local browser check with a disposable account and clean up only its records. Leave production authentication intact.
+
+Headless Chromium's mouse-based dragTo was unreliable on this tracker and hit unintended cards during board rerenders. Never run native drag tests on a board containing real records; filter to disposable work first. Explicitly targeted DataTransfer dragstart/dragover/drop events can check UI handlers and API persistence, but are not proof of physical mouse dragging. Distinguish the two in verification reports.

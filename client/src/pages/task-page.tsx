@@ -107,6 +107,7 @@ function valuesFromTask(task: Task): TaskPageValues {
 
 function getReturnPath(): string {
   const source = new URLSearchParams(window.location.search).get("from");
+  if (source && /^project:[1-9]\d*$/.test(source)) return `/projects/${source.slice("project:".length)}`;
   if (source === "projects") return "/projects";
   if (source === "my-tasks") return "/my-tasks";
   return "/tasks";
@@ -228,7 +229,7 @@ export default function TaskPage() {
             data-testid="button-close-task-page"
           >
             <ArrowLeft className="w-4 h-4 shrink-0" />
-            <span className="truncate">Back to {getReturnPath() === "/projects" ? "Projects" : getReturnPath() === "/my-tasks" ? "My Tasks" : "Tasks"}</span>
+            <span className="truncate">Back to {getReturnPath().startsWith("/projects/") || getReturnPath() === "/projects" ? "Project" : getReturnPath() === "/my-tasks" ? "My Tasks" : "Tasks"}</span>
           </button>
           <div className="flex items-center gap-2">
             {task.isArchived && (
@@ -305,7 +306,7 @@ export default function TaskPage() {
                   <FormItem className="mt-2">
                     <Select
                       value={field.value == null ? "backlog" : String(field.value)}
-                      onValueChange={value => field.onChange(value === "backlog" ? null : Number(value))}
+                      onValueChange={value => { if (value) field.onChange(value === "backlog" ? null : Number(value)); }}
                     >
                       <FormControl>
                         <SelectTrigger className="h-8 w-auto min-w-32 border-0 bg-transparent px-0 text-base font-medium text-fuchsia-700 shadow-none focus:ring-0 dark:text-fuchsia-300">
@@ -352,6 +353,9 @@ export default function TaskPage() {
                       <Select
                         value={field.value == null ? "none" : String(field.value)}
                         onValueChange={value => {
+                          // Radix's native form control can emit an empty value
+                          // while asynchronously loaded options are mounting.
+                          if (!value) return;
                           field.onChange(value === "none" ? null : Number(value));
                           form.setValue("milestoneId", null, { shouldDirty: true });
                         }}
@@ -376,7 +380,7 @@ export default function TaskPage() {
                       <Select
                         disabled={watchProjectId == null}
                         value={field.value == null ? "none" : String(field.value)}
-                        onValueChange={value => field.onChange(value === "none" ? null : Number(value))}
+                        onValueChange={value => { if (value) field.onChange(value === "none" ? null : Number(value)); }}
                       >
                         <FormControl><SelectTrigger><SelectValue placeholder="No milestone" /></SelectTrigger></FormControl>
                         <SelectContent>

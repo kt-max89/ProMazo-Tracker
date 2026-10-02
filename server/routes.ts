@@ -11,6 +11,8 @@ import { listCommentsByTaskId, createComment } from "./commentService";
 import { listTaskActivity } from "./taskActivityService";
 import { createTeamPost, deleteOwnTeamPost, listTeamPosts, toggleTeamPostPin } from "./teamPostService";
 import { listProjects, getProject, createProject, updateProject } from "./projectService";
+import { insertTeamSchema, teamMembershipSchema } from "@shared/schema";
+import { listTeams, createTeam, switchTeam, TeamClaimConflict } from "./teamService";
 import { listMilestones, listMilestonesByProject, getMilestone, createMilestone, updateMilestone, deleteMilestone } from "./milestoneService";
 import { createNextSprint, getTrackerSettings, listSprints, setCurrentSprint } from "./sprintService";
 import { createReflection, listReflections } from "./reflectionService";
@@ -26,6 +28,32 @@ export async function registerRoutes(
   app: Express
 ): Promise<Server> {
   setupAuth(app);
+
+  app.get("/api/teams", requireAuth, async (_req, res) => {
+    try { return res.json(await listTeams()); }
+    catch (err: any) { return res.status(500).json({ message: err.message }); }
+  });
+
+  app.post("/api/teams", requireAuth, async (req, res) => {
+    const parsed = insertTeamSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: parsed.error.errors[0].message });
+    try {
+      return res.json(await createTeam(req.user!.id, parsed.data.name, parsed.data.projectIds));
+    } catch (err: any) {
+      return res.status(err instanceof TeamClaimConflict ? 409 : 400).json({ message: err.message });
+    }
+  });
+
+  app.patch("/api/teams/membership", requireAuth, async (req, res) => {
+    const parsed = teamMembershipSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: parsed.error.errors[0].message });
+    try {
+      await switchTeam(req.user!.id, parsed.data.teamId);
+      const user = await storage.getUser(req.user!.id);
+      const { passwordHash: _, ...safeUser } = user!;
+      return res.json(safeUser);
+    } catch (err: any) { return res.status(400).json({ message: err.message }); }
+  });
 
   // Auth routes
   app.post("/api/auth/register", async (req, res) => {
@@ -775,6 +803,16 @@ export async function registerRoutes(
     } catch (err: any) {
       return res.status(500).json({ message: err.message });
     }
+  });
+
+  app.get("/api/projects/:id", requireAuth, async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id < 1) return res.status(400).json({ message: "Invalid project id" });
+    try {
+      const project = await getProject(id);
+      if (!project) return res.status(404).json({ message: "Project not found" });
+      return res.json(project);
+    } catch (err: any) { return res.status(500).json({ message: err.message }); }
   });
 
   app.post("/api/projects", requireAuth, async (req, res) => {
