@@ -5,6 +5,9 @@ import bcrypt from "bcrypt";
 import multer from "multer";
 import { storage } from "./storage";
 import { setupAuth, requireAuth, requireAdmin } from "./auth";
+import { changeUserAccess, listManagedUsers, UserAccessError } from "./userAccessService";
+import { validateRegistrationCode } from "./registrationCode";
+import { userAccessActionSchema } from "@shared/schema";
 import { registerSchema, loginSchema, insertTaskSchema, updateTaskSchema, insertProjectSchema, updateProjectSchema, insertMilestoneSchema, updateMilestoneSchema, insertTaskCommentSchema, insertTeamPostSchema, insertSprintReflectionSchema } from "@shared/schema";
 import { listTasks, getTask, createTask, updateTask, archiveTask, restoreTask } from "./taskService";
 import { listCommentsByTaskId, createComment } from "./commentService";
@@ -29,6 +32,28 @@ export async function registerRoutes(
 ): Promise<Server> {
   setupAuth(app);
 
+  app.get("/api/admin/users", requireAdmin, async (_req, res) => {
+    try {
+      return res.json(await listManagedUsers());
+    } catch {
+      return res.status(500).json({ message: "Could not load users" });
+    }
+  });
+
+  app.patch("/api/admin/users/:id", requireAdmin, async (req, res) => {
+    const id = Number(req.params.id);
+    const parsed = userAccessActionSchema.safeParse(req.body);
+    if (!Number.isSafeInteger(id) || id <= 0 || !parsed.success) {
+      return res.status(400).json({ message: "A valid user and access action are required" });
+    }
+    try {
+      return res.json(await changeUserAccess(req.user!.id, id, parsed.data.action));
+    } catch (error) {
+      return res.status(error instanceof UserAccessError ? error.status : 500)
+        .json({ message: error instanceof UserAccessError ? error.message : "Could not update user access" });
+    }
+  });
+
   app.get("/api/teams", requireAuth, async (_req, res) => {
     try { return res.json(await listTeams()); }
     catch (err: any) { return res.status(500).json({ message: err.message }); }
@@ -50,7 +75,7 @@ export async function registerRoutes(
     try {
       await switchTeam(req.user!.id, parsed.data.teamId);
       const user = await storage.getUser(req.user!.id);
-      const { passwordHash: _, ...safeUser } = user!;
+      const { passwordHash: _, authVersion: _version, ...safeUser } = user!;
       return res.json(safeUser);
     } catch (err: any) { return res.status(400).json({ message: err.message }); }
   });
@@ -62,18 +87,23 @@ export async function registerRoutes(
       if (!parsed.success) {
         return res.status(400).json({ message: parsed.error.errors[0].message });
       }
-      const { email, password, displayName } = parsed.data;
+      const { email, password, displayName, registrationCode } = parsed.data;
+      const codeResult = validateRegistrationCode(registrationCode);
+      if (codeResult === "unconfigured") {
+        return res.status(503).json({ message: "Registration is unavailable because its access code is not configured. Contact an admin." });
+      }
+      if (codeResult !== "valid") {
+        return res.status(403).json({ message: "Invalid registration code" });
+      }
       const existing = await storage.getUserByEmail(email);
       if (existing) {
         return res.status(409).json({ message: "Email already registered" });
       }
       const passwordHash = await bcrypt.hash(password, 12);
-      const allUsers = await storage.getAllUsers();
-      const role = allUsers.length === 0 ? "admin" : "user";
-      const user = await storage.createUser({ email, passwordHash, displayName, role });
+      const user = await storage.createUser({ email, passwordHash, displayName, role: "user" });
       req.login(user, (err) => {
         if (err) return res.status(500).json({ message: "Login failed after registration" });
-        const { passwordHash: _, ...safeUser } = user;
+        const { passwordHash: _, authVersion: _version, ...safeUser } = user;
         return res.json(safeUser);
       });
     } catch (err: any) {
@@ -91,7 +121,7 @@ export async function registerRoutes(
       if (!user) return res.status(401).json({ message: info?.message || "Invalid credentials" });
       req.login(user, (err) => {
         if (err) return next(err);
-        const { passwordHash: _, ...safeUser } = user;
+        const { passwordHash: _, authVersion: _version, ...safeUser } = user;
         return res.json(safeUser);
       });
     })(req, res, next);
@@ -106,7 +136,7 @@ export async function registerRoutes(
 
   app.get("/api/auth/me", (req, res) => {
     if (!req.isAuthenticated()) return res.status(401).json({ message: "Not authenticated" });
-    const { passwordHash: _, ...safeUser } = req.user!;
+    const { passwordHash: _, authVersion: _version, ...safeUser } = req.user!;
     res.json(safeUser);
   });
 
@@ -537,7 +567,7 @@ export async function registerRoutes(
   app.get("/api/users", requireAuth, async (req, res) => {
     try {
       const allUsers = await storage.getAllUsers();
-      return res.json(allUsers.map(({ passwordHash: _, ...u }) => u));
+      return res.json(allUsers.map(({ passwordHash: _, authVersion: _version, ...u }) => u));
     } catch (err: any) {
       return res.status(500).json({ message: err.message });
     }

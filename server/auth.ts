@@ -17,6 +17,8 @@ declare global {
       displayName: string;
       passwordHash: string;
       teamId: number | null;
+      isActive: boolean;
+      authVersion: number;
     }
   }
 }
@@ -55,6 +57,7 @@ export function setupAuth(app: Express) {
           if (!user) return done(null, false, { message: "Invalid credentials" });
           const valid = await bcrypt.compare(password, user.passwordHash);
           if (!valid) return done(null, false, { message: "Invalid credentials" });
+          if (!user.isActive) return done(null, false, { message: "Your account is deactivated. Contact an admin to reactivate it." });
           return done(null, user);
         } catch (err) {
           return done(err);
@@ -64,13 +67,15 @@ export function setupAuth(app: Express) {
   );
 
   passport.serializeUser((user: Express.User, done) => {
-    done(null, user.id);
+    done(null, { id: user.id, authVersion: user.authVersion });
   });
 
-  passport.deserializeUser(async (id: number, done) => {
+  passport.deserializeUser(async (sessionUser: number | { id: number; authVersion: number }, done) => {
     try {
+      const id = typeof sessionUser === "number" ? sessionUser : sessionUser.id;
+      const version = typeof sessionUser === "number" ? 0 : sessionUser.authVersion;
       const user = await storage.getUser(id);
-      done(null, user || undefined);
+      done(null, user?.isActive && user.authVersion === version ? user : false);
     } catch (err) {
       done(err);
     }
@@ -78,14 +83,14 @@ export function setupAuth(app: Express) {
 }
 
 export function requireAuth(req: Request, res: Response, next: NextFunction) {
-  if (!req.isAuthenticated()) {
+  if (!req.isAuthenticated() || !req.user?.isActive) {
     return res.status(401).json({ message: "Unauthorized" });
   }
   next();
 }
 
 export function requireAdmin(req: Request, res: Response, next: NextFunction) {
-  if (!req.isAuthenticated() || req.user?.role !== "admin") {
+  if (!req.isAuthenticated() || !req.user?.isActive || req.user.role !== "admin") {
     return res.status(403).json({ message: "Admin access required" });
   }
   next();

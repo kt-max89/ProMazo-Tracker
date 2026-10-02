@@ -4,6 +4,7 @@
  */
 import { sql } from "drizzle-orm";
 import { db } from "./db";
+import { initializeInitialAdminAccess } from "./userAccessService";
 
 /**
  * Clear stored allowedUsers email lists from all documents.
@@ -218,6 +219,7 @@ export async function runMigrations(): Promise<void> {
   await initializeTeams();
   await clearDocumentAllowedUsers();
   await initializeSprints();
+  await initializeInitialAdminAccess();
   await initializeTeamPosts();
   await initializeReflections();
   await initializeTaskActivity();

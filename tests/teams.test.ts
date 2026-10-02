@@ -25,7 +25,8 @@ test("legacy migration, atomic claims, switching, descriptions, and reconnection
     await admin.query(`
       CREATE TABLE "${schema}".users (
         id SERIAL PRIMARY KEY, email TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL,
-        role TEXT NOT NULL DEFAULT 'user', display_name TEXT NOT NULL);
+        role TEXT NOT NULL DEFAULT 'user', display_name TEXT NOT NULL,
+        is_active BOOLEAN NOT NULL DEFAULT true, auth_version INTEGER NOT NULL DEFAULT 0);
       CREATE TABLE "${schema}".projects (
         id SERIAL PRIMARY KEY, name TEXT NOT NULL, description TEXT, timeline TEXT,
         created_at TIMESTAMPTZ NOT NULL DEFAULT now(), updated_at TIMESTAMPTZ NOT NULL DEFAULT now());

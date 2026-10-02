@@ -1,4 +1,4 @@
-import { createContext, useContext, useCallback } from "react";
+import { createContext, useContext, useCallback, useEffect, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient, getQueryFn } from "./queryClient";
 
@@ -8,13 +8,14 @@ type User = {
   role: string;
   displayName: string;
   teamId: number | null;
+  isActive?: boolean;
 };
 
 type AuthContextType = {
   user: User | null;
   isLoading: boolean;
   login: (email: string, password: string) => Promise<void>;
-  register: (email: string, password: string, displayName: string) => Promise<void>;
+  register: (email: string, password: string, displayName: string, registrationCode: string) => Promise<void>;
   logout: () => Promise<void>;
 };
 
@@ -24,15 +25,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const { data: user, isLoading } = useQuery<User | null>({
     queryKey: ["/api/auth/me"],
     queryFn: getQueryFn({ on401: "returnNull" }),
+    refetchInterval: 30_000,
+    refetchOnWindowFocus: true,
   });
+
+  const previousUser = useRef<User | null | undefined>(undefined);
+  useEffect(() => {
+    const previous = previousUser.current;
+    const current = user ?? null;
+    const accessChanged = previous?.id != null && (
+      !current ||
+      current.id !== previous.id ||
+      current.role !== previous.role ||
+      current.isActive === false
+    );
+    if (accessChanged) {
+      queryClient.removeQueries({ predicate: (query) => query.queryKey[0] !== "/api/auth/me" });
+    }
+    previousUser.current = current;
+  }, [user]);
 
   const login = useCallback(async (email: string, password: string) => {
     await apiRequest("POST", "/api/auth/login", { email, password });
     await queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
   }, []);
 
-  const register = useCallback(async (email: string, password: string, displayName: string) => {
-    await apiRequest("POST", "/api/auth/register", { email, password, displayName });
+  const register = useCallback(async (email: string, password: string, displayName: string, registrationCode: string) => {
+    await apiRequest("POST", "/api/auth/register", { email, password, displayName, registrationCode });
     await queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
   }, []);
 
@@ -42,7 +61,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user: user ?? null, isLoading, login, register, logout }}>
+    <AuthContext.Provider value={{ user: user?.isActive === false ? null : user ?? null, isLoading, login, register, logout }}>
       {children}
     </AuthContext.Provider>
   );

@@ -32,6 +32,8 @@ export const usersTable = pgTable("users", {
   role: text("role").notNull().default("user"),
   displayName: text("display_name").notNull(),
   teamId: integer("team_id").references(() => teamsTable.id),
+  isActive: boolean("is_active").notNull().default(true),
+  authVersion: integer("auth_version").notNull().default(0),
 });
 
 // ─── Documents & chunks ──────────────────────────────────────────────────────
@@ -165,6 +167,7 @@ export const trackerSettingsTable = pgTable("tracker_settings", {
   sprint68BackfillCompleted: boolean("sprint_68_backfill_completed")
     .notNull()
     .default(false),
+  initialAdminConfigured: boolean("initial_admin_configured").notNull().default(false),
 });
 
 // ─── Sprint reflections ───────────────────────────────────────────────────────

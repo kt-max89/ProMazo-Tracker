@@ -9,6 +9,7 @@ export default function AuthPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [displayName, setDisplayName] = useState("");
+  const [registrationCode, setRegistrationCode] = useState("");
   const [loading, setLoading] = useState(false);
   const { login, register } = useAuth();
   const [, setLocation] = useLocation();
@@ -21,7 +22,7 @@ export default function AuthPage() {
       if (isLogin) {
         await login(email, password);
       } else {
-        await register(email, password, displayName);
+        await register(email, password, displayName, registrationCode);
       }
       setLocation("/");
     } catch (err: any) {
@@ -64,6 +65,26 @@ export default function AuthPage() {
                     onChange={(e) => setDisplayName(e.target.value)}
                     className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                     placeholder="Your name"
+                    required
+                  />
+                </div>
+              </div>
+            )}
+            {!isLogin && (
+              <div>
+                <label htmlFor="registration-code" className="text-sm font-medium mb-1.5 block">Registration code</label>
+                <div className="relative">
+                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" aria-hidden="true" />
+                  <input
+                    data-testid="input-registration-code"
+                    id="registration-code"
+                    type="password"
+                    autoComplete="off"
+                    value={registrationCode}
+                    onChange={(e) => setRegistrationCode(e.target.value)}
+                    className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                    placeholder="Enter your registration code"
+                    aria-label="Registration code"
                     required
                   />
                 </div>

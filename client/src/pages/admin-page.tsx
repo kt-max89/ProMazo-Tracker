@@ -10,6 +10,7 @@ import {
   CheckCircle, XCircle, X, Sun, Moon, Save, Search, Download, HardDrive, FolderOpen
 } from "lucide-react";
 import { useTheme } from "@/components/theme-provider";
+import UserManagement from "@/components/user-management";
 
 type Document = {
   id: number;
@@ -74,6 +75,7 @@ export default function AdminPage() {
       </header>
 
       <div className="max-w-4xl mx-auto p-6 space-y-6">
+        <UserManagement />
         <UploadSection />
         <DriveImportSection />
 

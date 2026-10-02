@@ -9,9 +9,17 @@ export type User = {
   role: "admin" | "user";
   displayName: string;
   teamId: number | null;
+  isActive: boolean;
+  authVersion: number;
 };
 
-export type InsertUser = Omit<User, "id" | "teamId">;
+export type InsertUser = Omit<User, "id" | "teamId" | "isActive" | "authVersion">;
+export type ManagedUser = Omit<User, "passwordHash" | "authVersion">;
+
+export const userAccessActionSchema = z.object({
+  action: z.enum(["promote", "demote", "deactivate", "reactivate"]),
+}).strict();
+export type UserAccessAction = z.infer<typeof userAccessActionSchema>["action"];
 
 export type Team = { id: number; name: string; createdAt: string };
 
@@ -214,6 +222,7 @@ export const registerSchema = z.object({
   email: z.string().email("Invalid email address"),
   password: z.string().min(8, "Password must be at least 8 characters"),
   displayName: z.string().min(1, "Display name is required"),
+  registrationCode: z.string().min(1, "Registration code is required").max(256, "Registration code is too long"),
 });
 
 export const loginSchema = z.object({
