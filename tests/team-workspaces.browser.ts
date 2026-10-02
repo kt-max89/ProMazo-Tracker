@@ -8,6 +8,7 @@ import { chromium, expect } from "@playwright/test";
 import bcrypt from "bcrypt";
 import { pool } from "../server/db";
 import { verifyTeamUpdateComposer } from "./team-update-composer.browser";
+import { assertJsonResponse, verifyTeamWorkspaceLoading } from "./team-workspace-loading.browser";
 
 if (!process.env.REPLIT_DEV_DOMAIN || process.env.REPLIT_DEPLOYMENT === "1") throw new Error("Run only in development preview");
 const baseURL = `https://${process.env.REPLIT_DEV_DOMAIN}`;
@@ -51,7 +52,8 @@ try {
     ["PUT", "/api/teams/1/projects/1", undefined],
     ["DELETE", "/api/teams/1/projects/1", undefined],
   ] as const) {
-    assert.equal((await unauth.request.fetch(path, { method, data })).status(), 401);
+    const body = await assertJsonResponse(await unauth.request.fetch(path, { method, data }), 401);
+    assert.equal(body.message, "Unauthorized");
   }
   const signedOutPage = await unauth.newPage();
   await signedOutPage.goto("/teams/1");
@@ -63,6 +65,15 @@ try {
   await page.getByTestId("button-submit-auth").click();
   await expect(page.getByTestId("auth-page")).toHaveCount(0);
   assert.equal((await api("GET", "/api/auth/me")).role, "user");
+  if (process.argv.includes("--loading-only")) {
+    const project = await api("POST", "/api/projects", { name: `Loading project ${suffix}` });
+    projectIds.push(project.id);
+    const otherTeam = await api("POST", "/api/teams", { name: `Other loading team ${suffix}` });
+    teamIds.push(otherTeam.id);
+    const memberTeam = await api("POST", "/api/teams", { name: `Loading team ${suffix}`, projectIds: [project.id] });
+    teamIds.push(memberTeam.id);
+    await verifyTeamWorkspaceLoading(page, memberTeam, otherTeam, project, `Workspace tester ${suffix}`);
+  } else {
   await verifyTeamUpdateComposer(page, suffix);
   if (!process.argv.includes("--composer-only")) {
   assert.equal((await context.request.get("/api/admin/users")).status(), 403);
@@ -98,6 +109,7 @@ try {
   teamIds.push(beta.id);
   assert.deepEqual((await api("GET", `/api/projects/${p.id}`)).teamIds, [alpha.id,beta.id]);
   await api("PATCH", "/api/teams/membership", { teamId: alpha.id });
+  await verifyTeamWorkspaceLoading(page, alpha, beta, p, `Workspace tester ${suffix}`);
   const statuses = ["not_started","in_progress","needs_review","done"];
   const labels = ["Not started","In progress","Needs review","Done"];
   for (const status of statuses) {
@@ -268,6 +280,7 @@ try {
   await page.screenshot({ path: "screenshots/shared-project-mobile.png", fullPage: true });
   assert.deepEqual(errors, []);
   console.log("Shared projects, sprint defaults/exclusions, four status colors, team pages, contracts save/cancel/error, auth boundaries and mobile layouts passed.");
+  }
   }
   assert.deepEqual(errors, []);
 } catch (error) {
