@@ -187,13 +187,17 @@ function ProjectFormDialog({
                 {milestones.length > 0 && (
                   <div className="space-y-1">
                     {milestones.map((m, i) => (
-                      <div key={i} className="flex items-center gap-2 bg-muted/50 rounded-lg px-3 py-2 text-sm">
-                        <Flag className="w-3.5 h-3.5 text-primary shrink-0" />
-                        <span className="flex-1 truncate font-medium">{m.name}</span>
-                        <SprintLabels sprints={sprints} excludedSprintIds={m.excludedSprintIds} />
-                        <button type="button" onClick={() => removeMilestone(i)} disabled={isPending} aria-label={`Remove milestone ${m.name}`} title={`Remove ${m.name}`} className="rounded p-1 transition-colors hover:bg-destructive/10 hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50">
-                          <X className="w-3.5 h-3.5" />
-                        </button>
+                      <div key={i} className="flex min-w-0 flex-col gap-2 bg-muted/50 rounded-lg px-3 py-2 text-sm">
+                        <div className="flex min-w-0 items-start gap-2">
+                          <Flag className="mt-0.5 w-3.5 h-3.5 text-primary shrink-0" />
+                          <span className="min-w-0 break-words font-medium [overflow-wrap:anywhere]">{m.name}</span>
+                        </div>
+                        <div className="flex min-w-0 items-start justify-between gap-2">
+                          <SprintLabels sprints={sprints} excludedSprintIds={m.excludedSprintIds} />
+                          <button type="button" onClick={() => removeMilestone(i)} disabled={isPending} aria-label={`Remove milestone ${m.name}`} title={`Remove ${m.name}`} className="shrink-0 rounded p-1 transition-colors hover:bg-destructive/10 hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50">
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -243,9 +247,9 @@ function ProjectFormDialog({
 function SprintLabels({ sprints, excludedSprintIds }: { sprints: Sprint[]; excludedSprintIds: number[] }) {
   const included = sprints.filter(sprint => !excludedSprintIds.includes(sprint.id));
   if (included.length === 0) {
-    return <span className="text-right text-[10px] text-muted-foreground">{sprints.length ? "No sprints selected" : "No sprints yet · future included"}</span>;
+    return <span className="text-[10px] text-muted-foreground">{sprints.length ? "No sprints selected" : "No sprints yet · future included"}</span>;
   }
-  return <span className="flex max-w-40 flex-wrap justify-end gap-1">{included.map(sprint => <span key={sprint.id} className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">Sprint {sprint.number}</span>)}</span>;
+  return <span className="flex min-w-0 max-w-full flex-wrap justify-start gap-1">{included.map(sprint => <span key={sprint.id} className="max-w-full break-words rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">Sprint {sprint.number}</span>)}</span>;
 }
 
 export function MilestoneManager({ project }: { project: Project }) {
@@ -331,7 +335,7 @@ export function MilestoneManager({ project }: { project: Project }) {
       )}
 
       {milestones.map(m => (
-        <div key={m.id} className="rounded-lg px-2 py-1.5 hover:bg-muted/50 transition-colors group">
+        <div key={m.id} className="min-w-0 rounded-lg px-2 py-1.5 hover:bg-muted/50 transition-colors group">
           {editingId === m.id ? (
             <div className="flex flex-col gap-1.5">
               <Input
@@ -365,11 +369,14 @@ export function MilestoneManager({ project }: { project: Project }) {
               </div>
             </div>
           ) : (
-            <div className="flex items-center gap-2">
-              <Flag className="w-3 h-3 text-primary shrink-0" />
-              <span className="text-sm flex-1 truncate">{m.name}</span>
-              <SprintLabels sprints={sprints} excludedSprintIds={(m as Milestone & { excludedSprintIds?: number[] }).excludedSprintIds ?? []} />
-              <div className="flex shrink-0 gap-1 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100">
+            <div className="flex min-w-0 flex-col gap-1.5">
+              <div className="flex min-w-0 items-start gap-2">
+                <Flag className="mt-0.5 w-3 h-3 text-primary shrink-0" />
+                <span className="min-w-0 flex-1 break-words text-sm [overflow-wrap:anywhere]">{m.name}</span>
+              </div>
+              <div className="flex min-w-0 items-start justify-between gap-2 pl-5">
+                <SprintLabels sprints={sprints} excludedSprintIds={(m as Milestone & { excludedSprintIds?: number[] }).excludedSprintIds ?? []} />
+                <div className="flex shrink-0 gap-1 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100">
                 <button
                   type="button"
                   onClick={() => startEdit(m)}
@@ -394,6 +401,7 @@ export function MilestoneManager({ project }: { project: Project }) {
                 >
                   <Trash2 className="w-3 h-3" />
                 </button>
+                </div>
               </div>
             </div>
           )}

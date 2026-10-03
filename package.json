@@ -14,6 +14,8 @@
     "test:team-workspace-loading": "tsx tests/team-workspaces.browser.ts --loading-only",
     "test:team-update-composer": "tsx tests/team-workspaces.browser.ts --composer-only",
     "db:push": "drizzle-kit push",
+    "db:sprint-plans": "NODE_ENV=development tsx scripts/apply-sprint-plan-schema.ts",
+    "test:sprint-plans-browser": "tsx tests/sprint-plans.browser.ts",
     "db:user-access": "NODE_ENV=development tsx scripts/apply-user-access-schema.ts",
     "db:team-workspaces": "NODE_ENV=development tsx scripts/apply-team-workspace-schema.ts"
   },

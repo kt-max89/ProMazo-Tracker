@@ -5,6 +5,7 @@ import bcrypt from "bcrypt";
 import multer from "multer";
 import { storage } from "./storage";
 import { setupAuth, requireAuth, requireAdmin } from "./auth";
+import { registerSprintPlanRoutes } from "./sprintPlanRoutes";
 import { changeUserAccess, listManagedUsers, UserAccessError } from "./userAccessService";
 import { validateRegistrationCode } from "./registrationCode";
 import { userAccessActionSchema } from "@shared/schema";
@@ -31,6 +32,7 @@ export async function registerRoutes(
   app: Express
 ): Promise<Server> {
   setupAuth(app);
+  registerSprintPlanRoutes(app);
 
   app.get("/api/admin/users", requireAdmin, async (_req, res) => {
     try {

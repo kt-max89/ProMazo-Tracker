@@ -146,6 +146,24 @@ export type TrackerSettings = {
   currentSprintId: number | null;
 };
 
+export type ProjectSprintPlan = {
+  id: number;
+  projectId: number;
+  sprintId: number;
+  sprintNumber: number;
+  content: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export const createSprintPlanSchema = z.object({
+  sprintId: z.number().int().positive(),
+  content: z.string().max(100_000, "Sprint plan is too long"),
+}).strict();
+
+// Assignment is immutable; editing changes only the Markdown.
+export const updateSprintPlanSchema = createSprintPlanSchema.pick({ content: true }).strict();
+
 export const wasteCategories = ["wastefulness", "imbalance", "overload"] as const;
 export type WasteCategory = (typeof wasteCategories)[number];
 

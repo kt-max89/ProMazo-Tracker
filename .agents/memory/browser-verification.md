@@ -22,3 +22,9 @@ When checking a phone layout after starting a browser on desktop, set the intend
 **Why:** Resizing a browser preserves mount-time desktop sidebar state, which can make a narrow-screen test measure an open desktop sidebar instead of the initial phone layout.
 
 **How to apply:** Close the sidebar before testing the content controls, or navigate at the target viewport when testing initial mobile behavior. Do not hide a genuine content overflow by relaxing the width assertion.
+
+For tests that deliberately cancel browser-back navigation, trigger history.back() without awaiting a navigation load event, then assert the route and draft remain intact.
+
+**Why:** Playwright's goBack() can time out waiting for a load event precisely because the application's unsaved-draft guard successfully prevented navigation.
+
+**How to apply:** Use a dialog dismissal handler plus history.back() in page evaluation for guard tests; use normal navigation waiting when navigation is meant to succeed.

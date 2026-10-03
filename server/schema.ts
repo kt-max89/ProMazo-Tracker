@@ -15,6 +15,7 @@ import {
   check,
   index,
   primaryKey,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 
@@ -167,6 +168,17 @@ export const sprintsTable = pgTable("sprints", {
     .notNull()
     .defaultNow(),
 });
+
+export const projectSprintPlansTable = pgTable("project_sprint_plans", {
+  id: serial("id").primaryKey(),
+  projectId: integer("project_id").notNull().references(() => projectsTable.id, { onDelete: "cascade" }),
+  sprintId: integer("sprint_id").notNull().references(() => sprintsTable.id),
+  content: text("content").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, table => [
+  uniqueIndex("project_sprint_plans_project_sprint_unique").on(table.projectId, table.sprintId),
+]);
 
 /**
  * A one-row table for tracker-wide settings. `id` is always 1; storing the
