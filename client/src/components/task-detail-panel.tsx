@@ -1,4 +1,5 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
+import { RemoteUpdateNotice, useRemoteUpdate } from "@/components/remote-update-notice";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useForm } from "react-hook-form";
@@ -58,6 +59,15 @@ const taskFormSchema = z.object({
 
 type TaskFormValues = z.infer<typeof taskFormSchema>;
 
+function valuesFromTask(task: Task): TaskFormValues {
+  return {
+    title: task.title, description: task.description ?? "", status: task.status,
+    isBlocked: task.isBlocked, blockedReason: task.blockedReason ?? "",
+    size: task.size, dueDate: task.dueDate, assigneeIds: task.assigneeIds,
+    projectId: task.projectId, milestoneId: task.milestoneId, sprintId: task.sprintId,
+  };
+}
+
 export function TaskDetailPanel({
   task,
   onClose,
@@ -68,6 +78,12 @@ export function TaskDetailPanel({
   onExpand?: () => void;
 }) {
   const { toast } = useToast();
+  const latestQuery = useQuery<Task>({
+    queryKey: ["/api/tasks", task.id],
+    queryFn: () => apiRequest("GET", `/api/tasks/${task.id}`).then(r => r.json()),
+    initialData: task,
+  });
+  const latestTask = latestQuery.data ?? task;
 
   const { data: users = [] } = useQuery<AppUser[]>({ queryKey: ["/api/users"] });
   const { data: projects = [] } = useQuery<Project[]>({ queryKey: ["/api/projects"] });
@@ -90,23 +106,16 @@ export function TaskDetailPanel({
     },
   });
 
-  // Reset form when task changes
+  const baselineId = useRef<number>();
+  const remote = useRemoteUpdate(latestTask, form.formState.isDirty);
+  // A remote update may refresh a clean form, but never a local draft.
   useEffect(() => {
-    form.reset({
-      title: task.title ?? "",
-      description: task.description ?? "",
-      status: (task.status as StatusValue) ?? "not_started",
-      isBlocked: task.isBlocked ?? false,
-      blockedReason: task.blockedReason ?? "",
-      size: task.size ?? null,
-      dueDate: task.dueDate ?? null,
-      assigneeIds: task.assigneeIds ?? [],
-      projectId: task.projectId ?? null,
-      milestoneId: task.milestoneId ?? null,
-      sprintId: task.sprintId ?? null,
-    });
-    setDescEditing(!task.description);
-  }, [task.id]);
+    if (baselineId.current !== latestTask.id || !form.formState.isDirty) {
+      form.reset(valuesFromTask(latestTask));
+      setDescEditing(!latestTask.description);
+      baselineId.current = latestTask.id;
+    }
+  }, [latestTask, form, form.formState.isDirty]);
 
   const watchIsBlocked = form.watch("isBlocked");
   const watchProjectId = form.watch("projectId");
@@ -131,7 +140,9 @@ export function TaskDetailPanel({
   const updateMutation = useMutation({
     mutationFn: (data: TaskFormValues) =>
       apiRequest("PATCH", `/api/tasks/${task.id}`, data).then(r => r.json()),
-    onSuccess: () => {
+    onSuccess: (updated: Task) => {
+      form.reset(valuesFromTask(updated));
+      queryClient.setQueryData(["/api/tasks", updated.id], updated);
       queryClient.invalidateQueries({ queryKey: ["/api/tasks"] });
       queryClient.invalidateQueries({ queryKey: ["/api/tasks", task.id, "activity"] });
       toast({ title: "Task updated" });
@@ -171,7 +182,7 @@ export function TaskDetailPanel({
           <p className="text-xs text-muted-foreground" data-testid="text-task-panel-id">
             Task #{task.id}
           </p>
-        </div>
+          </div>
         <div className="flex items-center gap-1">
           {onExpand && (
             <button
@@ -197,6 +208,7 @@ export function TaskDetailPanel({
 
       {/* Scrollable form body */}
       <div className="flex-1 overflow-y-auto px-5 py-4">
+        <RemoteUpdateNotice changed={remote.changed} reload={() => { form.reset(valuesFromTask(latestTask)); remote.accept(); }} />
         <Form {...form}>
           <form id="task-panel-form" onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
             <FormField

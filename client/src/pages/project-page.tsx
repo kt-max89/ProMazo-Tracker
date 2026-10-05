@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from "react";
+import { LivePresence } from "@/lib/live";
+import { RemoteUpdateNotice, useRemoteUpdate } from "@/components/remote-update-notice";
 import { useRoute, useLocation } from "wouter";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { ArrowLeft, CalendarDays, Pencil, Plus, Save, UsersRound, X, Clock3, FileText, Loader2 } from "lucide-react";
@@ -51,6 +53,7 @@ export default function ProjectPage() {
   const teamsQuery = useQuery<Team[]>({ queryKey: ["/api/teams"] });
   const tasksQuery = useQuery<Task[]>({ queryKey: ["/api/tasks"] });
   const project = projectQuery.data;
+  const remote = useRemoteUpdate(project, editing);
 
   useEffect(() => {
     if (project && !editing) {
@@ -91,8 +94,13 @@ export default function ProjectPage() {
         {editing && <Button variant="ghost" size="sm" onClick={() => { setName(project.name); setTimeline(project.timeline ?? ""); setDescription(project.description ?? ""); setTeamIds(project.teamIds ?? (project.teamId == null ? [] : [project.teamId])); setEditing(false); }}><X className="mr-1.5 h-4 w-4"/>Cancel</Button>}
         {editing ? <Button size="sm" disabled={save.isPending} onClick={() => save.mutate({ name, timeline: timeline || null, description: description || null, teamIds })}><Save className="mr-1.5 h-4 w-4"/>Save</Button> : <Button variant="outline" size="sm" onClick={() => setEditing(true)}><Pencil className="mr-1.5 h-4 w-4"/>Edit project</Button>}
       </div>
+      <LivePresence />
     </div></header>
     <main className="mx-auto max-w-5xl space-y-8 px-4 py-8 sm:px-6 sm:py-12">
+      <RemoteUpdateNotice changed={remote.changed} reload={() => {
+        setName(project.name); setDescription(project.description ?? ""); setTimeline(project.timeline ?? "");
+        setTeamIds(project.teamIds ?? (project.teamId == null ? [] : [project.teamId])); remote.accept();
+      }} />
       <section className="border-b pb-7">
         <p className="text-xs font-semibold uppercase tracking-[.18em] text-primary">Project workspace · #{project.id}</p>
         {editing ? <Input value={name} onChange={event => setName(event.target.value)} aria-label="Project name" className="mt-3 h-auto border-0 bg-transparent px-0 text-4xl font-bold tracking-tight shadow-none focus-visible:ring-0"/> : <h1 className="mt-3 break-words text-4xl font-bold tracking-tight sm:text-5xl">{project.name}</h1>}

@@ -39,6 +39,27 @@ export const usersTable = pgTable("users", {
   authVersion: integer("auth_version").notNull().default(0),
 });
 
+// Coalesced change counters, not a record/event history.
+export const liveRevisionsTable = pgTable("live_revisions", {
+  domain: text("domain").primaryKey(),
+  revision: integer("revision").notNull().default(0),
+});
+
+export const presenceLeasesTable = pgTable("presence_leases", {
+  sessionId: text("session_id").notNull(),
+  tabId: text("tab_id").notNull(),
+  userId: integer("user_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
+  authVersion: integer("auth_version").notNull(),
+  page: text("page").notNull(),
+  active: boolean("active").notNull(),
+  seenAt: timestamp("seen_at", { withTimezone: true }).notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+}, table => [
+  primaryKey({ columns: [table.sessionId, table.tabId] }),
+  index("presence_leases_expiry_idx").on(table.expiresAt),
+  index("presence_leases_user_idx").on(table.userId),
+]);
+
 // ─── Documents & chunks ──────────────────────────────────────────────────────
 
 export const documentsTable = pgTable("documents", {

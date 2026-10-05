@@ -1,4 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { LivePresence } from "@/lib/live";
+import { RemoteUpdateNotice, useRemoteUpdate } from "@/components/remote-update-notice";
 import { useLocation, useRoute } from "wouter";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
@@ -150,9 +152,14 @@ export default function TaskPage() {
     enabled: watchProjectId != null,
   });
 
+  const baselineTask = useRef<Task>();
+  const remote = useRemoteUpdate(task, form.formState.isDirty);
   useEffect(() => {
-    if (task) form.reset(valuesFromTask(task));
-  }, [task, form]);
+    if (task && (baselineTask.current?.id !== task.id || !form.formState.isDirty)) {
+      form.reset(valuesFromTask(task));
+      baselineTask.current = task;
+    }
+  }, [task, form, form.formState.isDirty]);
 
   const updateMutation = useMutation({
     mutationFn: (values: TaskPageValues) =>
@@ -267,6 +274,7 @@ export default function TaskPage() {
               )}
               Save
             </Button>
+            <LivePresence />
           </div>
         </div>
       </header>
@@ -281,6 +289,7 @@ export default function TaskPage() {
               >
                 Task #{task.id}
               </p>
+              <RemoteUpdateNotice changed={remote.changed} reload={() => { form.reset(valuesFromTask(task)); remote.accept(); }} />
               <FormField
                 control={form.control}
                 name="title"

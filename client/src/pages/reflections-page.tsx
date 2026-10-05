@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { LivePresence } from "@/lib/live";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, BookOpen, Loader2, LogOut, Moon, PanelLeft, Settings, Sun, UsersRound } from "lucide-react";
 import { Link, useLocation } from "wouter";
@@ -85,6 +86,7 @@ export default function ReflectionsPage() {
               <LogOut className="w-4 h-4" />
             </button>
           </div>
+          <LivePresence />
         </header>
 
         <main className="flex-1 overflow-auto">

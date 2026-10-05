@@ -19,6 +19,7 @@ import ProjectPage from "@/pages/project-page";
 import ReflectionsPage from "@/pages/reflections-page";
 import NotFound from "@/pages/not-found";
 import { Loader2 } from "lucide-react";
+import { LiveProvider } from "@/lib/live";
 
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
   const { user, isLoading } = useAuth();
@@ -72,10 +73,12 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
         <AuthProvider>
+          <LiveProvider>
           <TooltipProvider>
             <Toaster />
             <Router />
           </TooltipProvider>
+          </LiveProvider>
         </AuthProvider>
       </ThemeProvider>
     </QueryClientProvider>

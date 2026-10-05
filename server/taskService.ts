@@ -1,5 +1,6 @@
 import { eq, and, or, ilike, inArray, type SQL } from "drizzle-orm";
 import { db } from "./db";
+import { liveCoordinator } from "./live";
 import { tasksTable, taskAssigneesTable } from "./schema";
 import { taskStatuses, type Task, type InsertTask, type TaskStatus } from "@shared/schema";
 import { getProject } from "./projectService";
@@ -189,7 +190,7 @@ export async function createTask(input: InsertTask): Promise<Task> {
   }
 
   const actorName = await getActorName(input.createdBy);
-  return db.transaction(async tx => {
+  const saved = await db.transaction(async tx => {
     const [row] = await tx
       .insert(tasksTable)
       .values({
@@ -228,6 +229,8 @@ export async function createTask(input: InsertTask): Promise<Task> {
     }
     return mapTask(row, assigneeIds);
   });
+  await liveCoordinator.publish("tasks");
+  return saved;
 }
 
 export async function updateTask(id: number, input: Partial<InsertTask>, actorId?: number | null): Promise<Task> {

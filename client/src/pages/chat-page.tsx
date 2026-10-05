@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useLayoutEffect } from "react";
+import { LivePresence } from "@/lib/live";
 import { useAuth } from "@/lib/auth";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -350,7 +351,7 @@ export default function ChatPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
   const [activeSessionId, setActiveSessionId] = useState<number | null>(null);
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(() => window.innerWidth >= 768);
   const [pendingProposal, setPendingProposal] = useState<ValidatedProposal | null>(null);
   const [isCreatingTasks, setIsCreatingTasks] = useState(false);
   const [, setLocation] = useLocation();
@@ -635,7 +636,7 @@ export default function ChatPage() {
             <h1 className="font-semibold text-lg">ProMazo Task Tracker</h1>
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-sm text-muted-foreground mr-2" data-testid="text-user-name">
+            <span className="hidden sm:inline text-sm text-muted-foreground mr-2" data-testid="text-user-name">
               {user?.displayName}
             </span>
             <button
@@ -667,6 +668,7 @@ export default function ChatPage() {
               <LogOut className="w-4 h-4" />
             </button>
           </div>
+          <LivePresence />
         </header>
 
         <div className="flex-1 min-h-0 overflow-y-auto px-4 py-6">

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type MutableRefObject } from "react";
+import { RemoteUpdateNotice, useRemoteUpdate } from "@/components/remote-update-notice";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Clock3, FileText, Loader2, Pencil, Plus, Save, X } from "lucide-react";
 import type { Project, ProjectSprintPlan, Sprint, TrackerSettings } from "@shared/schema";
@@ -57,7 +58,6 @@ export function ProjectSprintPlans({
   const settingsQuery = useQuery<TrackerSettings>({
     queryKey: ["/api/sprint-settings"],
     queryFn: () => apiRequest("GET", "/api/sprint-settings").then(response => response.json()),
-    refetchInterval: 5000,
     staleTime: 0,
   });
   const plansQuery = useQuery<ProjectSprintPlan[]>({
@@ -82,6 +82,8 @@ export function ProjectSprintPlans({
     ? draftSprintId
     : viewedPlan?.sprintId ?? (viewedPlanId == null ? currentSprintId : null);
   const activeSprint = sprints.find(sprint => sprint.id === activeSprintId);
+  const remotePlan = draftIsNew ? plans.find(plan => plan.sprintId === draftSprintId) : viewedPlan;
+  const remote = useRemoteUpdate(remotePlan, editingPlan);
   const isPlanDirty = editingPlan && planDraft !== editBaseline;
   dirtyRef.current = !!isPlanDirty;
 
@@ -293,6 +295,10 @@ export function ProjectSprintPlans({
       </div>
 
       {/* Keep an active editor visible even if a polling/refetch request fails. */}
+      <RemoteUpdateNotice changed={remote.changed} reload={() => {
+        if (remotePlan && draftIsNew) { setViewedPlanId(remotePlan.id); setDraftSprintId(null); }
+        setPlanDraft(remotePlan?.content ?? ""); setEditBaseline(remotePlan?.content ?? ""); remote.accept();
+      }} />
       {editingPlan ? (
         <div className="overflow-hidden rounded-xl border bg-card">
           <div className="flex flex-wrap items-center gap-2 border-b bg-muted/30 px-4 py-3">

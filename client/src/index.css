@@ -2,6 +2,30 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Independent page headers share only this presence-specific mobile behavior. */
+@media (max-width: 640px) {
+  header:has([data-testid="live-presence"]),
+  header:has([data-testid="live-presence"]) > div:has(> [data-testid="live-presence"]) {
+    flex-wrap: wrap;
+    gap: .5rem;
+    height: auto;
+    min-height: 3.5rem;
+  }
+  header:has([data-testid="live-presence"]) {
+    padding-left: .75rem;
+    padding-right: .75rem;
+  }
+  header:has([data-testid="live-presence"]) > div {
+    min-width: 0;
+    max-width: 100%;
+    flex-wrap: wrap;
+  }
+  header:has([data-testid="live-presence"]) h1 {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+}
+
 /* LIGHT MODE */
 :root {
   --button-outline: rgba(0,0,0, .10);

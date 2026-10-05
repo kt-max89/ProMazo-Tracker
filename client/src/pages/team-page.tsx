@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import { LivePresence } from "@/lib/live";
+import { RemoteUpdateNotice, useRemoteUpdate } from "@/components/remote-update-notice";
 import { useRoute, useLocation, Link } from "wouter";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import ReactMarkdown from "react-markdown";
@@ -31,7 +33,8 @@ export default function TeamPage() {
     retry: false,
   });
   const projectsQuery = useQuery<SharedProject[]>({ queryKey: ["/api/projects"] });
-  const membersQuery = useQuery<Member[]>({ queryKey: ["/api/users"], refetchInterval: 30_000 });
+  const remote = useRemoteUpdate(teamQuery.data?.socialContract, editing);
+  const membersQuery = useQuery<Member[]>({ queryKey: ["/api/users"] });
   useEffect(() => {
     if (teamQuery.data?.id === teamId && !editing) setDraft(teamQuery.data.socialContract ?? "");
   }, [teamQuery.data, editing, teamId]);
@@ -82,6 +85,7 @@ export default function TeamPage() {
       <div className="mx-auto flex h-14 max-w-5xl items-center justify-between px-4 sm:px-6">
         <Button variant="ghost" size="sm" onClick={() => setLocation("/team-overview")}><ArrowLeft className="mr-2 h-4 w-4"/>Team Overview</Button>
         <span className="text-xs text-muted-foreground">Shared team workspace</span>
+        <LivePresence />
       </div>
     </header>
     <main className="mx-auto max-w-5xl space-y-6 px-4 py-7 sm:px-6 sm:py-10">
@@ -102,6 +106,7 @@ export default function TeamPage() {
                 </> : <Button variant="outline" size="sm" onClick={() => setEditing(true)}>Edit contract</Button>}
               </div>
             </div>
+            <RemoteUpdateNotice changed={remote.changed} reload={() => { setDraft(team.socialContract ?? ""); remote.accept(); }} />
             {editing ? <div className="grid min-w-0 gap-4 lg:grid-cols-2">
               <div className="min-w-0"><p className="mb-2 text-xs font-medium text-muted-foreground">Markdown</p><Textarea value={draft} onChange={event => setDraft(event.target.value)} disabled={saveContract.isPending} rows={11} className="min-w-0 resize-y font-mono text-sm leading-6" placeholder="How do we work together? Add principles, expectations, and rituals." aria-label="Social contract Markdown"/></div>
               <div className="min-w-0"><p className="mb-2 text-xs font-medium text-muted-foreground">Preview</p><Markdown value={draft} empty="Your preview will appear here."/></div>

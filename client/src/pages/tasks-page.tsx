@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { LivePresence } from "@/lib/live";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/lib/auth";
@@ -162,7 +163,7 @@ export default function TasksPage() {
   const { theme, toggleTheme } = useTheme();
   const { toast } = useToast();
   const [, setLocation] = useLocation();
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(() => window.innerWidth >= 768);
   const [showArchived, setShowArchived] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [editTask, setEditTask] = useState<Task | null>(null);
@@ -213,7 +214,6 @@ export default function TasksPage() {
   });
   const { data: sprintSettings } = useQuery<TrackerSettings>({
     queryKey: ["/api/sprint-settings"],
-    refetchInterval: 30_000,
   });
 
   const restoreMutation = useMutation({
@@ -299,7 +299,7 @@ export default function TasksPage() {
             <h1 className="font-semibold text-lg">Task Tracker</h1>
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-sm text-muted-foreground mr-2" data-testid="text-tasks-user">{user?.displayName}</span>
+            <span className="hidden sm:inline text-sm text-muted-foreground mr-2" data-testid="text-tasks-user">{user?.displayName}</span>
             <button
               data-testid="button-toggle-theme-tasks"
               onClick={toggleTheme}
@@ -329,6 +329,7 @@ export default function TasksPage() {
               <LogOut className="w-4 h-4" />
             </button>
           </div>
+          <LivePresence />
         </header>
 
         <div className="px-6 py-3 border-b flex items-center gap-3 shrink-0 flex-wrap">

@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { LivePresence } from "@/lib/live";
 import { Link } from "wouter";
 import { ArrowLeft, BookOpen, FileText, Loader2, Sun, Moon } from "lucide-react";
 import { useTheme } from "@/components/theme-provider";
@@ -48,6 +49,7 @@ export default function HistoryPage() {
         >
           {theme === "light" ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
         </button>
+        <LivePresence />
       </header>
 
       <div className="max-w-3xl mx-auto p-6">

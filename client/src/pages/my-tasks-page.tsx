@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { LivePresence } from "@/lib/live";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/lib/auth";
@@ -107,7 +108,7 @@ export default function MyTasksPage() {
   const { theme, toggleTheme } = useTheme();
   const { toast } = useToast();
   const [, setLocation] = useLocation();
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(() => window.innerWidth >= 768);
   const [editTask, setEditTask] = useState<Task | null>(null);
   const [draggingTaskId, setDraggingTaskId] = useState<number | null>(null);
   const [dragOverColumn, setDragOverColumn] = useState<string | null>(null);
@@ -132,7 +133,6 @@ export default function MyTasksPage() {
   });
   const { data: sprintSettings } = useQuery<TrackerSettings>({
     queryKey: ["/api/sprint-settings"],
-    refetchInterval: 30_000,
   });
 
   const changeStatusMutation = useMutation({
@@ -198,7 +198,7 @@ export default function MyTasksPage() {
             <h1 className="font-semibold text-lg">{viewLabel}</h1>
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-sm text-muted-foreground mr-1">{user?.displayName}</span>
+            <span className="hidden sm:inline text-sm text-muted-foreground mr-1">{user?.displayName}</span>
             <button onClick={toggleTheme} className="p-2 rounded-lg hover:bg-muted transition-colors">
               {theme === "light" ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
             </button>
@@ -227,6 +227,7 @@ export default function MyTasksPage() {
               <LogOut className="w-4 h-4" />
             </button>
           </div>
+          <LivePresence />
         </header>
 
         {/* ── Toolbar ── */}

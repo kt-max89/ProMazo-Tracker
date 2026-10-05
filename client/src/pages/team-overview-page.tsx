@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import { LivePresence } from "@/lib/live";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import ReactMarkdown from "react-markdown";
 import { Link, useLocation } from "wouter";
@@ -82,10 +83,9 @@ export default function TeamOverviewPage() {
   const teamsQuery = useQuery<Team[]>({ queryKey: ["/api/teams"] });
   const membersQuery = useQuery<TeamMember[]>({
     queryKey: ["/api/users"],
-    refetchInterval: 30_000,
   });
   const sprintsQuery = useQuery<Sprint[]>({ queryKey: ["/api/sprints"] });
-  const sprintSettingsQuery = useQuery<TrackerSettings>({ queryKey: ["/api/sprint-settings"], refetchInterval: 30_000 });
+  const sprintSettingsQuery = useQuery<TrackerSettings>({ queryKey: ["/api/sprint-settings"] });
   const membershipMutation = useMutation({
     mutationFn: (teamId: number | null) => apiRequest("PATCH", "/api/teams/membership", { teamId }).then(r => r.json()),
     onSuccess: (updated: any) => {
@@ -242,6 +242,7 @@ export default function TeamOverviewPage() {
               <LogOut className="w-4 h-4" />
             </button>
           </div>
+          <LivePresence />
         </header>
 
         <main className="flex-1 overflow-auto">

@@ -4,6 +4,7 @@ import passport from "passport";
 import bcrypt from "bcrypt";
 import multer from "multer";
 import { storage } from "./storage";
+import { registerLive, removeSessionPresence, liveCoordinator } from "./live";
 import { setupAuth, requireAuth, requireAdmin } from "./auth";
 import { registerSprintPlanRoutes } from "./sprintPlanRoutes";
 import { changeUserAccess, listManagedUsers, UserAccessError } from "./userAccessService";
@@ -32,6 +33,7 @@ export async function registerRoutes(
   app: Express
 ): Promise<Server> {
   setupAuth(app);
+  await registerLive(app, httpServer);
   registerSprintPlanRoutes(app);
 
   app.get("/api/admin/users", requireAdmin, async (_req, res) => {
@@ -49,7 +51,10 @@ export async function registerRoutes(
       return res.status(400).json({ message: "A valid user and access action are required" });
     }
     try {
-      return res.json(await changeUserAccess(req.user!.id, id, parsed.data.action));
+      const updated = await changeUserAccess(req.user!.id, id, parsed.data.action);
+      await liveCoordinator.publish("users");
+      await liveCoordinator.publish("presence");
+      return res.json(updated);
     } catch (error) {
       return res.status(error instanceof UserAccessError ? error.status : 500)
         .json({ message: error instanceof UserAccessError ? error.message : "Could not update user access" });
@@ -154,9 +159,15 @@ export async function registerRoutes(
   });
 
   app.post("/api/auth/logout", (req, res) => {
+    const sessionId = req.sessionID;
     req.logout((err) => {
       if (err) return res.status(500).json({ message: "Logout failed" });
-      res.json({ message: "Logged out" });
+      req.session.destroy(async error => {
+        if (error) return res.status(500).json({ message: "Logout failed" });
+        try { await removeSessionPresence(sessionId); } catch { /* leases expire; session is already revoked */ }
+        res.clearCookie("connect.sid");
+        res.json({ message: "Logged out" });
+      });
     });
   });
 

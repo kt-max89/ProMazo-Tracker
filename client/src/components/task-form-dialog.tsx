@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { RemoteUpdateNotice, useRemoteUpdate } from "@/components/remote-update-notice";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useForm } from "react-hook-form";
@@ -78,6 +79,13 @@ export function TaskFormDialog({
   const isEdit = !!task;
 
   const { data: users = [] } = useQuery<AppUser[]>({ queryKey: ["/api/users"] });
+  const { data: latestTask = task } = useQuery<Task>({
+    queryKey: ["/api/tasks", task?.id],
+    queryFn: () => apiRequest("GET", `/api/tasks/${task!.id}`).then(r => r.json()),
+    enabled: !!task && open,
+    initialData: task,
+  });
+  const remote = useRemoteUpdate(latestTask, !!task && open);
   const { data: projects = [] } = useQuery<Project[]>({ queryKey: ["/api/projects"] });
   const { data: sprints = [] } = useQuery<Sprint[]>({ queryKey: ["/api/sprints"] });
   const { data: sprintSettings } = useQuery<TrackerSettings>({ queryKey: ["/api/sprint-settings"] });
@@ -190,6 +198,16 @@ export function TaskFormDialog({
         </DialogHeader>
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+            <RemoteUpdateNotice changed={remote.changed} reload={() => {
+              if (!latestTask) return;
+              form.reset({
+                title: latestTask.title, description: latestTask.description ?? "",
+                status: latestTask.status, isBlocked: latestTask.isBlocked, blockedReason: latestTask.blockedReason ?? "",
+                size: latestTask.size, dueDate: latestTask.dueDate ?? "", assigneeIds: latestTask.assigneeIds,
+                projectId: latestTask.projectId, milestoneId: latestTask.milestoneId, sprintId: latestTask.sprintId,
+              });
+              remote.accept();
+            }} />
             <FormField
               control={form.control}
               name="title"

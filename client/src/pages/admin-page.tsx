@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { LivePresence } from "@/lib/live";
 import { useAuth } from "@/lib/auth";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -72,6 +73,7 @@ export default function AdminPage() {
         >
           {theme === "light" ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
         </button>
+        <LivePresence />
       </header>
 
       <div className="max-w-4xl mx-auto p-6 space-y-6">

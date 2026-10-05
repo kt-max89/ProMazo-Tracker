@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { LivePresence } from "@/lib/live";
+import { RemoteUpdateNotice, useRemoteUpdate } from "@/components/remote-update-notice";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useForm } from "react-hook-form";
@@ -55,6 +57,14 @@ function ProjectFormDialog({
 }) {
   const { toast } = useToast();
   const isEdit = !!project;
+  const latestQuery = useQuery<Project>({
+    queryKey: ["/api/projects", project?.id],
+    queryFn: () => apiRequest("GET", `/api/projects/${project!.id}`).then(r => r.json()),
+    enabled: !!project && open,
+    initialData: project,
+  });
+  const latest = latestQuery.data ?? project;
+  const remote = useRemoteUpdate(latest, open && isEdit);
   const { data: teams = [], isLoading: teamsLoading, isError: teamsError, refetch: refetchTeams } = useQuery<Team[]>({ queryKey: ["/api/teams"] });
   const { data: sprints = [], isLoading: sprintsLoading, isError: sprintsError, refetch: refetchSprints } = useQuery<Sprint[]>({ queryKey: ["/api/sprints"] });
   const [teamIds, setTeamIds] = useState<number[]>(project ? ((project as SharedProject).teamIds ?? (project.teamId == null ? [] : [project.teamId])) : []);
@@ -129,6 +139,12 @@ function ProjectFormDialog({
         </DialogHeader>
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+            <RemoteUpdateNotice changed={remote.changed} reload={() => {
+              if (!latest) return;
+              form.reset({ name: latest.name, description: latest.description ?? "", timeline: latest.timeline ?? "" });
+              setTeamIds((latest as SharedProject).teamIds ?? (latest.teamId == null ? [] : [latest.teamId]));
+              remote.accept();
+            }} />
             <FormField
               control={form.control}
               name="name"
@@ -586,7 +602,7 @@ export default function ProjectsPage() {
   const { user, logout } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const [, setLocation] = useLocation();
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(() => window.innerWidth >= 768);
   const [projectFormOpen, setProjectFormOpen] = useState(false);
   const [editProject, setEditProject] = useState<Project | null>(null);
   const [taskFormOpen, setTaskFormOpen] = useState(false);
@@ -608,7 +624,6 @@ export default function ProjectsPage() {
   });
   const { data: sprintSettings } = useQuery<TrackerSettings>({
     queryKey: ["/api/sprint-settings"],
-    refetchInterval: 30_000,
   });
 
   const sprintFilteredTasks = allTasks.filter(t =>
@@ -669,7 +684,7 @@ export default function ProjectsPage() {
             <h1 className="font-semibold text-lg">Projects</h1>
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-sm text-muted-foreground mr-2">{user?.displayName}</span>
+            <span className="hidden sm:inline text-sm text-muted-foreground mr-2">{user?.displayName}</span>
             <button
               onClick={toggleTheme}
               className="p-2 rounded-lg hover:bg-muted transition-colors"
@@ -697,6 +712,7 @@ export default function ProjectsPage() {
               <LogOut className="w-4 h-4" />
             </button>
           </div>
+          <LivePresence />
         </header>
 
         <div className="px-6 py-3 border-b flex items-center gap-3 shrink-0 flex-wrap">
