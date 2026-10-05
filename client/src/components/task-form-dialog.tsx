@@ -23,7 +23,7 @@ import ReactMarkdown from "react-markdown";
 import { MultiUserSelect } from "@/components/multi-user-select";
 import type { Task, Project, Milestone, Sprint, TrackerSettings } from "@shared/schema";
 
-type AppUser = { id: number; displayName: string; email: string };
+type AppUser = { id: number; displayName: string; email: string; isActive: boolean };
 
 const STATUSES = [
   { value: "not_started", label: "Not started" },

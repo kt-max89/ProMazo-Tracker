@@ -11,6 +11,7 @@ const baseURL = `https://${process.env.REPLIT_DEV_DOMAIN}`;
 const suffix = randomUUID().slice(0, 8);
 const password = `Disposable-${randomUUID()}`;
 const ids: number[] = [];
+let taskId: number | undefined;
 const browser = await chromium.launch({
   executablePath: existsSync("/repl/tools/bin/chromium") ? "/repl/tools/bin/chromium" : undefined,
   args: ["--no-sandbox"],
@@ -53,11 +54,50 @@ try {
   await expect(memberRow).toContainText("Admin");
   await page.getByTestId(`button-demote-user-${memberId}`).click();
   await expect(page.getByTestId(`button-promote-user-${memberId}`)).toBeVisible();
+  const createdTask = await context.request.post("/api/tasks", {
+    data: { title: `Assignee regression ${suffix}`, assigneeIds: [memberId] },
+  });
+  assert.ok(createdTask.ok());
+  taskId = (await createdTask.json()).id;
   await page.getByTestId(`button-deactivate-user-${memberId}`).click();
   await expect(memberRow).toContainText("Inactive");
   await expect(page.getByTestId(`button-promote-user-${memberId}`)).toBeDisabled();
+  await page.goto("/tasks");
+  await page.getByTestId("button-new-task").click();
+  await page.getByTestId("select-task-assignee").click();
+  await expect(page.getByTestId(`option-assignee-${adminId}`)).toBeVisible();
+  await expect(page.getByTestId(`option-assignee-${memberId}`)).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await page.getByTestId("button-cancel-task").click();
+  await expect(page.getByTestId("dialog-task-form")).toHaveCount(0);
+  await page.getByText(`Assignee regression ${suffix}`, { exact: true }).click();
+  await page.getByTestId("select-task-assignee").click();
+  await expect(page.getByTestId(`option-assignee-${memberId}`)).toHaveCount(0);
+  await expect(page.getByTestId(`option-assignee-${adminId}`)).toBeVisible();
+  await page.keyboard.press("Escape");
+  await page.getByTestId("button-close-task-panel").click();
+  await page.goto(`/tasks/${taskId}`);
+  const assignees = page.getByRole("combobox").filter({ hasText: `Access Member ${suffix}` });
+  await expect(assignees).toContainText(`Access Member ${suffix}`);
+  await assignees.locator("svg").last().click();
+  await expect(page.getByTestId(`option-assignee-${memberId}`)).toHaveCount(0);
+  await expect(page.getByTestId(`option-assignee-${adminId}`)).toBeVisible();
+  await page.getByTestId(`option-assignee-${adminId}`).click();
+  await page.keyboard.press("Escape");
+  const savedTaskResponse = page.waitForResponse(response =>
+    response.url().endsWith(`/api/tasks/${taskId}`) && response.request().method() === "PATCH");
+  await page.getByTestId("button-save-task-page").click();
+  assert.ok((await savedTaskResponse).ok());
+  const preservedTask = await context.request.get(`/api/tasks/${taskId}`);
+  assert.deepEqual((await preservedTask.json()).assigneeIds.sort((a: number, b: number) => a - b), [adminId, memberId].sort((a, b) => a - b));
+  await page.goto("/admin");
   await page.getByTestId(`button-reactivate-user-${memberId}`).click();
   await expect(page.getByTestId(`button-deactivate-user-${memberId}`)).toBeVisible();
+  await page.goto(`/tasks/${taskId}`);
+  await page.getByRole("combobox").filter({ hasText: `Access Member ${suffix}` }).locator("svg").last().click();
+  await expect(page.getByTestId(`option-assignee-${memberId}`)).toBeVisible();
+  await page.keyboard.press("Escape");
+  await page.goto("/admin");
   await page.setViewportSize({ width: 402, height: 874 });
   await expect(memberRow).toBeVisible();
   const overflow = await page.evaluate(() => ({
@@ -78,10 +118,14 @@ try {
   await expect(page.getByTestId("auth-page")).toBeVisible();
   assert.equal((await context.request.get("/api/auth/me")).status(), 401);
   assert.deepEqual(errors, []);
-  console.log("Signed-in Settings actions, self-demotion/deactivation, masked signup code, and mobile layout passed.");
+  console.log("Settings actions, active-only assignee options, preserved assignments, reactivation, signup code, and mobile layout passed.");
 } finally {
   await context.close();
   await browser.close();
+  if (taskId) {
+    await pool.query("DELETE FROM task_assignees WHERE task_id=$1", [taskId]);
+    await pool.query("DELETE FROM tasks WHERE id=$1", [taskId]);
+  }
   if (ids.length) {
     await pool.query(`DELETE FROM session WHERE
       (sess->'passport'->'user'->>'id') = ANY($1::text[]) OR

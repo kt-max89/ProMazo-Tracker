@@ -43,7 +43,7 @@ import { MultiUserSelect } from "@/components/multi-user-select";
 import { TaskComments } from "@/components/task-comments";
 import { TaskActivity } from "@/components/task-activity";
 
-type AppUser = { id: number; displayName: string; email: string };
+type AppUser = { id: number; displayName: string; email: string; isActive: boolean };
 
 const STATUSES = [
   { value: "not_started", label: "Not started" },

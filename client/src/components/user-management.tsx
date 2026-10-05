@@ -42,6 +42,7 @@ export default function UserManagement() {
     onSuccess: async (_updatedUser, variables) => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: usersKey }),
+        queryClient.invalidateQueries({ queryKey: ["/api/users"] }),
         queryClient.invalidateQueries({
           predicate: (query) => {
             const key = query.queryKey[0];

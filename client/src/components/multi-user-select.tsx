@@ -9,8 +9,9 @@ import {
   Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList,
 } from "@/components/ui/command";
 import { cn } from "@/lib/utils";
+import { queryClient } from "@/lib/queryClient";
 
-type AppUser = { id: number; displayName: string; email: string };
+type AppUser = { id: number; displayName: string; email: string; isActive: boolean };
 
 export function MultiUserSelect({
   users,
@@ -25,6 +26,7 @@ export function MultiUserSelect({
 }) {
   const [open, setOpen] = useState(false);
   const selectedUsers = users.filter(u => value.includes(u.id));
+  const assignableUsers = users.filter(u => u.isActive);
 
   function toggle(id: number) {
     if (value.includes(id)) {
@@ -35,7 +37,13 @@ export function MultiUserSelect({
   }
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={open} onOpenChange={nextOpen => {
+      setOpen(nextOpen);
+      if (nextOpen) {
+        // Status may have changed in another session since this form loaded.
+        void queryClient.invalidateQueries({ queryKey: ["/api/users"] });
+      }
+    }}>
       <PopoverTrigger asChild>
         <Button
           type="button"
@@ -78,7 +86,7 @@ export function MultiUserSelect({
           <CommandList className="max-h-52 overflow-y-auto overflow-x-hidden">
             <CommandEmpty>No one found.</CommandEmpty>
             <CommandGroup>
-              {users.map(u => (
+              {assignableUsers.map(u => (
                 <CommandItem
                   key={u.id}
                   value={u.displayName}
