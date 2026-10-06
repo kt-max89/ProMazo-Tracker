@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { randomUUID } from "crypto";
+import { reviewedAssigneeIdsSchema } from "../shared/proposalAssignments";
 
 const VALID_SIZES = ["XXS", "XS", "S", "M", "L", "XL", "XXL"] as const;
 
@@ -7,6 +8,7 @@ const proposedTaskDraftSchema = z.object({
   title: z.string().min(1),
   description: z.string().optional(),
   assignedToName: z.string().optional(),
+  assigneeIds: reviewedAssigneeIdsSchema,
   projectName: z.string().optional(),
   milestoneName: z.string().optional(),
   dueDate: z.string().optional(),
@@ -15,6 +17,20 @@ const proposedTaskDraftSchema = z.object({
 });
 
 export type ProposedTaskDraft = z.infer<typeof proposedTaskDraftSchema>;
+
+// Approval must not use the model's tolerant parser, which skips malformed rows.
+export const reviewedProposalSchema = z.object({
+  tasks: z.array(proposedTaskDraftSchema.extend({
+    title: z.string().trim().min(1, "Task title is required"),
+  }).transform(draft => ({
+    ...draft,
+    description: draft.description?.trim() || undefined,
+    assignedToName: draft.assignedToName?.trim() || undefined,
+    projectName: draft.projectName?.trim() || undefined,
+    milestoneName: draft.milestoneName?.trim() || undefined,
+    dueDate: draft.dueDate?.trim() || undefined,
+  }))).min(1).max(5),
+});
 
 
 export type ValidatedProposal = {
@@ -40,6 +56,7 @@ export function validateProposal(raw: unknown): ValidatedProposal | null {
         title,
         description,
         assignedToName: parsed.data.assignedToName?.trim() || undefined,
+        assigneeIds: parsed.data.assigneeIds,
         projectName: parsed.data.projectName?.trim() || undefined,
         milestoneName: parsed.data.milestoneName?.trim() || undefined,
         dueDate: parsed.data.dueDate?.trim() || undefined,

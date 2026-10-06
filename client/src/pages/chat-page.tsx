@@ -10,6 +10,8 @@ import { useTheme } from "@/components/theme-provider";
 import ReactMarkdown from "react-markdown";
 import { AppSidebar } from "@/components/app-sidebar";
 import type { Sprint, TrackerSettings } from "@shared/schema";
+import { eligibleProposalUsers, legacyProposalAssignment, type AssignmentUser } from "@shared/proposalAssignments";
+import { ProposalAssigneeSelect } from "@/components/proposal-assignee-select";
 
 type Citation = {
   documentId: number;
@@ -40,6 +42,7 @@ type ProposedTaskDraft = {
   title: string;
   description?: string;
   assignedToName?: string;
+  assigneeIds?: number[];
   projectName?: string;
   milestoneName?: string;
   dueDate?: string;
@@ -74,7 +77,36 @@ function ProposalModal({
   );
   const [currentIndex, setCurrentIndex] = useState(0);
 
-  const { data: users } = useQuery<any[]>({ queryKey: ["/api/users"] });
+  const { user } = useAuth();
+  const directory = useQuery<AssignmentUser[]>({
+    queryKey: ["/api/users"], refetchOnMount: "always", refetchInterval: 30_000,
+  });
+  const users = directory.data;
+  // The directory snapshot includes the reviewer's fresh membership too.
+  const reviewer = users?.find(member => member.id === user?.id);
+  const eligible = eligibleProposalUsers(users ?? [], reviewer);
+  const eligibleIds = new Set(eligible.map(member => member.id));
+  const [assignmentWarnings, setAssignmentWarnings] = useState<Record<number, string>>({});
+  const labels = useRef(new Map<number, string>());
+  users?.forEach(member => labels.current.set(member.id, member.displayName));
+  useEffect(() => {
+    void directory.refetch();
+  }, [user?.teamId]);
+  useEffect(() => {
+    if (!users || directory.isFetching || directory.isError) return;
+    if (editedTasks.every(draft => draft.assigneeIds !== undefined)) return;
+    const warnings: Record<number, string> = {};
+    const resolutions = editedTasks.map((draft, index) => {
+      const resolved = draft.assigneeIds === undefined
+        ? legacyProposalAssignment(draft.assignedToName, users, reviewer)
+        : { ids: draft.assigneeIds };
+      if (resolved.warning) warnings[index] = resolved.warning;
+      return resolved.ids;
+    });
+    setEditedTasks(previous => previous.map((draft, index) =>
+      draft.assigneeIds === undefined ? { ...draft, assigneeIds: resolutions[index] } : draft));
+    setAssignmentWarnings(previous => ({ ...previous, ...warnings }));
+  }, [users, directory.isFetching, directory.isError, reviewer, editedTasks]);
   const { data: projects } = useQuery<any[]>({ queryKey: ["/api/projects"] });
   const { data: allMilestones } = useQuery<any[]>({ queryKey: ["/api/milestones"] });
   const { data: sprints = [] } = useQuery<Sprint[]>({ queryKey: ["/api/sprints"] });
@@ -109,7 +141,16 @@ function ProposalModal({
     return allMilestones.filter((m: any) => m.projectId === proj.id);
   })();
 
-  const canCreate = editedTasks.every((t) => t.title.trim().length > 0);
+  const invalidTasks = editedTasks.flatMap((draft, index) =>
+    draft.assigneeIds?.some(id => !eligibleIds.has(id)) ? [index + 1] : []);
+  const canCreate = !directory.isFetching && !directory.isError && !!users &&
+    invalidTasks.length === 0 && editedTasks.every(t => t.title.trim().length > 0 && t.assigneeIds !== undefined);
+
+  function changeAssignees(ids: number[]) {
+    setEditedTasks(previous => previous.map((draft, index) =>
+      index === currentIndex ? { ...draft, assigneeIds: ids } : draft));
+    setAssignmentWarnings(previous => ({ ...previous, [currentIndex]: "" }));
+  }
 
   return (
     <div
@@ -235,18 +276,23 @@ function ProposalModal({
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1.5">
               <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Assigned To</label>
-              <select
-                data-testid={`proposal-row-${currentIndex}-assignee`}
-                className={fieldClass}
-                value={task.assignedToName ?? ""}
-                onChange={(e) => updateCurrent("assignedToName", e.target.value)}
+              <ProposalAssigneeSelect
+                users={directory.isError ? [] : eligible}
+                selected={task.assigneeIds ?? []}
+                labels={labels.current}
+                onChange={changeAssignees}
+                onOpen={() => { void directory.refetch(); }}
                 disabled={isCreating}
-              >
-                <option value="">— unassigned —</option>
-                {users?.map((u: any) => (
-                  <option key={u.id} value={u.displayName}>{u.displayName}</option>
-                ))}
-              </select>
+                testId={`proposal-row-${currentIndex}-assignee`}
+              />
+              <div className="text-xs space-y-1" aria-live="polite">
+                {directory.isFetching && <p>Loading current team members…</p>}
+                {directory.isError && <p role="alert">Could not load team members. Your selections are preserved. <button type="button" className="underline" onClick={() => { void directory.refetch(); }}>Retry</button></p>}
+                {users && !directory.isFetching && reviewer?.teamId == null && <p>You are not on a team. Join a team to assign people, or leave this task unassigned.</p>}
+                {assignmentWarnings[currentIndex] && <p>{assignmentWarnings[currentIndex]}</p>}
+                {(task.assigneeIds ?? []).some(id => !eligibleIds.has(id)) && !directory.isFetching && !directory.isError &&
+                  <p role="alert">A selected person is no longer an active member of your team. Remove that selection or choose another team member.</p>}
+              </div>
             </div>
             <div className="space-y-1.5">
               <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Due Date</label>
@@ -296,6 +342,8 @@ function ProposalModal({
         </div>
 
         {/* ── Footer ── */}
+        {invalidTasks.length > 0 && !directory.isFetching && !directory.isError &&
+          <p role="alert" className="px-6 pb-2 text-xs text-destructive">Check assignments on task(s) {invalidTasks.join(", ")} before creating.</p>}
         <div className="flex items-center justify-between px-6 py-4 border-t shrink-0">
           {/* Dot indicators for multiple tasks */}
           {total > 1 ? (
@@ -588,6 +636,8 @@ export default function ChatPage() {
         },
       ]);
     } catch (err: any) {
+      void queryClient.invalidateQueries({ queryKey: ["/api/users"] });
+      void queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
       toast({
         title: "Error creating tasks",
         description: err.message || "Failed to create tasks",

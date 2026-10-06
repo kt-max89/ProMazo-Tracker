@@ -23,7 +23,8 @@ import { createNextSprint, getTrackerSettings, listSprints, setCurrentSprint } f
 import { appendReflection, createReflection, getReflection, listReflections, reflectionAccess, ReflectionError } from "./reflectionService";
 import { chunkText, hashChunk, getEmbedding, getEmbeddings } from "./openai";
 import { handleChatMessage } from "./chatOrchestrator";
-import { validateProposal } from "./proposalSchema";
+import { reviewedProposalSchema } from "./proposalSchema";
+import { ProposalAssignmentError, resolveProposalAssignments } from "../shared/proposalAssignments";
 import { listDriveFiles, listDriveFolders, listFilesInFolder, getFilePermissions, getDriveFileContent } from "./google-drive";
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
@@ -617,12 +618,14 @@ export async function registerRoutes(
       if (!Array.isArray(rawTasks)) {
         return res.status(400).json({ message: "tasks must be an array" });
       }
-      const proposal = validateProposal({ type: "create_task", tasks: rawTasks });
-      if (!proposal) {
-        return res.status(400).json({ message: "No valid tasks in proposal after validation" });
+      const parsed = reviewedProposalSchema.safeParse({ tasks: rawTasks });
+      if (!parsed.success) {
+        return res.status(400).json({ message: `Review all tasks before approval: ${parsed.error.errors[0].message}` });
       }
+      const proposal = parsed.data;
 
       const allUsers = await storage.getAllUsers();
+      const assignments = resolveProposalAssignments(proposal.tasks, allUsers, req.user!.id);
       const allProjects = await listProjects();
 
       // Pre-resolve all drafts before creating any task, so a resolution failure
@@ -634,23 +637,14 @@ export async function registerRoutes(
         projectId: number | undefined;
         milestoneId: number | undefined;
         dueDate: string | null;
-        size: string | null;
+        size: import("./proposalSchema").ProposedTaskDraft["size"] | null;
         sprintId: number | null | undefined;
       };
 
       const resolvedDrafts: ResolvedDraft[] = [];
-      for (const draft of proposal.tasks) {
-        // Resolve assignee — fall back to the approving user
-        let assigneeIds: number[] = [req.user!.id];
-        if (draft.assignedToName) {
-          const nameLower = draft.assignedToName.toLowerCase();
-          const found = allUsers.find(
-            (u) =>
-              u.displayName.toLowerCase() === nameLower ||
-              u.displayName.toLowerCase().includes(nameLower)
-          );
-          if (found) assigneeIds = [found.id];
-        }
+      for (let index = 0; index < proposal.tasks.length; index++) {
+        const draft = proposal.tasks[index];
+        const assigneeIds = assignments[index];
 
         // Resolve project name → projectId (exact match first, then partial)
         let projectId: number | undefined;
@@ -724,7 +718,7 @@ export async function registerRoutes(
       }
       return res.json({ created });
     } catch (err: any) {
-      return res.status(500).json({ message: err.message });
+      return res.status(err instanceof ProposalAssignmentError ? 400 : 500).json({ message: err.message });
     }
   });
 
