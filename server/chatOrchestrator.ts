@@ -10,6 +10,7 @@ import type { DocChunk } from "./documentRetrievalService";
 import type { IStorage } from "./storage";
 import type { User } from "@shared/schema";
 import { settleReadToolCalls } from "./readToolExecution";
+import { isFirstChatTurn, loadTeamSprintContext, runProjectKnowledgeTool } from "./projectKnowledgeTool";
 
 if (!process.env.OPENAI_API_KEY) {
   console.warn("OPENAI_API_KEY not set - AI features will not work");
@@ -49,6 +50,7 @@ export async function* handleChatMessage(
   // summary rather than dropped silently.
   let history: HistoryMessage[] = [];
   let historySummary: string | undefined;
+  let firstTurn = true;
 
   if (sessionId) {
     const allMessages = await storage.getChatMessagesBySessionId(sessionId);
@@ -56,6 +58,7 @@ export async function* handleChatMessage(
     // before this generator was invoked, so it is the last row — exclude it
     // here since it's added explicitly by buildPrompt via `message`.
     const priorMessages = allMessages.slice(0, -1);
+    firstTurn = isFirstChatTurn(priorMessages);
 
     let selected = priorMessages.slice(-MAX_HISTORY_MESSAGES);
     let totalChars = selected.reduce((sum, m) => sum + m.content.length, 0);
@@ -77,7 +80,18 @@ export async function* handleChatMessage(
 
   // Step 1: select a small, bounded set of compatible read-only tools. Recent
   // history lets the router resolve follow-ups without expanding prompt cost.
-  const toolCalls = await selectToolIntents(message, history);
+  // Membership, selected sprint, and saved plans are refreshed for every turn,
+  // including the first question, before the router sees the user's request.
+  let teamSprintContext: string;
+  try {
+    const currentUser = await storage.getUser(user.id);
+    teamSprintContext = currentUser
+      ? await loadTeamSprintContext(currentUser, firstTurn)
+      : "Automatic team context unavailable: authenticated user's account could not be loaded.";
+  } catch {
+    teamSprintContext = "Automatic team context unavailable: membership lookup failed. This does not mean that no plans exist.";
+  }
+  const toolCalls = await selectToolIntents(message, history, teamSprintContext);
   if (toolCalls.length === 0) {
     yield { type: "route", data: "NO_TOOL" };
   } else {
@@ -85,6 +99,7 @@ export async function* handleChatMessage(
   }
 
   const toolResults: ToolResult[] = [];
+  yield { type: "route", data: "TEAM_SPRINT_PLANS" };
   let docChunks: DocChunk[] = [];
 
   // Step 2: execute independent reads concurrently. A rejected source becomes a
@@ -150,6 +165,7 @@ export async function* handleChatMessage(
     history,
     historySummary,
     projectsContext,
+    teamSprintContext,
     currentUserName: user.displayName,
     tomorrowDate,
   });
@@ -260,6 +276,11 @@ async function executeReadTool(
     };
   }
 
+  if (call.intent === "READ_PROJECT_CONTEXT") {
+    const result = await runProjectKnowledgeTool(call.args);
+    return { toolResult: { type: "plans", ...result }, docChunks: [] };
+  }
+
   const result = await runReadDocsTool(call.args, user);
   return {
     toolResult: { type: "docs", content: result.contextText, isEmpty: result.isEmpty, suggestRetry: result.suggestRetry },
@@ -271,5 +292,6 @@ function resultTypeForIntent(intent: ToolCall["intent"]): ToolResult["type"] {
   if (intent === "SEE_TASKS") return "tasks";
   if (intent === "SEE_PROJECTS") return "projects";
   if (intent === "SEE_TEAM") return "team";
+  if (intent === "READ_PROJECT_CONTEXT") return "plans";
   return "docs";
 }

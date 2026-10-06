@@ -1,4 +1,4 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { db } from "./db";
 import { projectsTable, projectSprintPlansTable as plans, sprintsTable } from "./schema";
 import type { ProjectSprintPlan } from "@shared/schema";
@@ -26,6 +26,29 @@ export async function listSprintPlans(projectId: number): Promise<ProjectSprintP
   const rows = await db.select(selection).from(plans).innerJoin(sprintsTable, eq(plans.sprintId, sprintsTable.id))
     .where(eq(plans.projectId, projectId)).orderBy(desc(sprintsTable.number));
   return rows.map(mapPlan);
+}
+
+// Chat discovery never loads every historical Markdown document into memory.
+export async function listSprintPlanSummaries(projectIds: number[], sprintId?: number) {
+  if (!projectIds.length) return [];
+  const rows = await db.select({
+    id: plans.id, projectId: plans.projectId, sprintId: plans.sprintId,
+    sprintNumber: sprintsTable.number, updatedAt: plans.updatedAt,
+    contentLength: sql<number>`length(${plans.content})`,
+  }).from(plans).innerJoin(sprintsTable, eq(plans.sprintId, sprintsTable.id))
+    .where(and(inArray(plans.projectId, projectIds), sprintId == null ? undefined : eq(plans.sprintId, sprintId)))
+    .orderBy(desc(sprintsTable.number), desc(plans.id));
+  return rows.map(row => ({ ...row, updatedAt: row.updatedAt.toISOString() }));
+}
+
+export async function readSprintPlanExcerpt(projectId: number, planId: number, offset: number, size: number) {
+  const [row] = await db.select({
+    // Cast bound values: PostgreSQL otherwise selects the text/regex overload.
+    content: sql<string>`substring(${plans.content} from ${offset + 1}::integer for ${size}::integer)`,
+    contentLength: sql<number>`length(${plans.content})`,
+  }).from(plans).where(and(eq(plans.projectId, projectId), eq(plans.id, planId)));
+  if (!row) throw new SprintPlanError(404, "Sprint plan not found");
+  return row;
 }
 export async function getSprintPlan(projectId: number, planId: number): Promise<ProjectSprintPlan> {
   await requireProject(projectId);

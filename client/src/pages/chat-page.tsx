@@ -19,7 +19,7 @@ type Citation = {
   similarity: number;
 };
 
-type ToolUsed = "SEE_TASKS" | "READ_DOCS" | "SEE_PROJECTS" | "SEE_TEAM" | "NO_TOOL";
+type ToolUsed = "SEE_TASKS" | "READ_DOCS" | "SEE_PROJECTS" | "SEE_TEAM" | "READ_PROJECT_CONTEXT" | "TEAM_SPRINT_PLANS" | "NO_TOOL";
 
 type Message = {
   role: "user" | "assistant";
@@ -699,10 +699,13 @@ export default function ChatPage() {
                              <span key={tool} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-muted text-muted-foreground/70 text-[11px]">
                                {tool === "SEE_TASKS" && <ListTodo className="w-3 h-3" />}
                                {tool === "SEE_PROJECTS" && <FolderKanban className="w-3 h-3" />}
+                               {(tool === "READ_PROJECT_CONTEXT" || tool === "TEAM_SPRINT_PLANS") && <BookOpen className="w-3 h-3" />}
                                {tool === "SEE_TEAM" && <Users className="w-3 h-3" />}
                                {tool === "READ_DOCS" && <FileText className="w-3 h-3" />}
                                {tool === "SEE_TASKS" && "Task Board"}
                                {tool === "SEE_PROJECTS" && "Projects"}
+                               {tool === "READ_PROJECT_CONTEXT" && "Plans & overviews"}
+                               {tool === "TEAM_SPRINT_PLANS" && "Team sprint plans"}
                                {tool === "SEE_TEAM" && "Team"}
                                {tool === "READ_DOCS" && "Documents"}
                              </span>

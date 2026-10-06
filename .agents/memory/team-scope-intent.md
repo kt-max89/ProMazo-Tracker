@@ -14,3 +14,9 @@ Chat should automatically receive current-sprint plans for the user's team proje
 **Why:** The user explicitly requested team-specific starting context and project-wide read access for any user; personalization must not become an access restriction.
 
 **How to apply:** Use team membership to choose automatic context only. Do not require same-team membership for explicit project overview or sprint-plan lookups.
+
+Refresh automatic chat context on follow-up questions rather than retaining a permanent first-message snapshot.
+
+**Why:** Team membership, the shared current sprint, and saved plans can change during a chat. A snapshot would keep giving outdated priorities despite newer saved work.
+
+**How to apply:** Keep automatic context bounded and explicitly disclose omissions; preserve targeted, project-wide reads as the way to retrieve more detail. Missing current plans must not fall back to older sprint plans.
