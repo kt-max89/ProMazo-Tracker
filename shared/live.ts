@@ -26,6 +26,6 @@ export const sharedQueryRoots: Record<LiveDomain, string[]> = {
   teams: ["/api/teams", "/api/users", "/api/auth/me", "/api/projects", "/api/tasks", "/api/milestones"],
   posts: ["/api/team-posts"],
   reflections: ["/api/reflections", "/api/reflections/recent"],
-  users: ["/api/users", "/api/auth/me", "/api/teams", "/api/tasks"],
+  users: ["/api/users", "/api/auth/me", "/api/teams", "/api/tasks", "/api/reflections", "/api/reflections/recent"],
   presence: [],
 };

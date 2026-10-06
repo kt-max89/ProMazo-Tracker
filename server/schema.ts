@@ -238,6 +238,19 @@ export const reflectionsTable = pgTable("reflections", {
 
 // ─── Tasks ────────────────────────────────────────────────────────────────────
 
+export const reflectionAdditionsTable = pgTable("reflection_additions", {
+  id: serial("id").primaryKey(),
+  reflectionId: integer("reflection_id").notNull().references(() => reflectionsTable.id, { onDelete: "cascade" }),
+  authorId: integer("author_id").references(() => usersTable.id, { onDelete: "set null" }),
+  authorName: text("author_name").notNull(),
+  field: text("field").notNull(),
+  text: text("text").notNull(),
+  wasteIndex: integer("waste_index"),
+  wasteAdditionId: integer("waste_addition_id"),
+  category: text("category"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, table => [index("reflection_additions_reflection_idx").on(table.reflectionId, table.id)]);
+
 export const tasksTable = pgTable(
   "tasks",
   {

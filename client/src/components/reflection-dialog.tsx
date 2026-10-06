@@ -44,9 +44,11 @@ const emptyWaste = () => ({ category: "wastefulness" as const, description: "" }
 export function ReflectionDialog({
   open,
   onClose,
+  initialSprintId,
 }: {
   open: boolean;
   onClose: () => void;
+  initialSprintId?: number;
 }) {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -69,11 +71,14 @@ export function ReflectionDialog({
   const { fields, append, remove } = useFieldArray({ control: form.control, name: "wastes" });
 
   useEffect(() => {
-    if (open && settings?.currentSprintId && !defaultSprintApplied.current) {
+    if (open && initialSprintId && !form.formState.isDirty) {
+      form.setValue("sprintId", initialSprintId, { shouldDirty: false });
+      defaultSprintApplied.current = true;
+    } else if (open && settings?.currentSprintId && !defaultSprintApplied.current) {
       form.setValue("sprintId", settings.currentSprintId, { shouldDirty: false });
       defaultSprintApplied.current = true;
     }
-  }, [open, settings?.currentSprintId, form]);
+  }, [open, initialSprintId, settings?.currentSprintId, form]);
 
   const createMutation = useMutation({
     mutationFn: (values: InsertSprintReflection) =>
@@ -81,6 +86,8 @@ export function ReflectionDialog({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/reflections"] });
       queryClient.invalidateQueries({ queryKey: ["/api/reflections/recent"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/reflections/access"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/reflections/detail"] });
       toast({ title: "Reflection submitted" });
       form.reset({
         sprintId: settings?.currentSprintId ?? 0,

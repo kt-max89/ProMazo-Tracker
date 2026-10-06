@@ -20,7 +20,7 @@ import { insertTeamSchema, teamMembershipSchema, updateTeamSchema } from "@share
 import { listTeams, getTeam, createTeam, switchTeam, updateTeam, changeProjectLink } from "./teamService";
 import { listMilestones, listMilestonesByProject, getMilestone, createMilestone, updateMilestone, deleteMilestone } from "./milestoneService";
 import { createNextSprint, getTrackerSettings, listSprints, setCurrentSprint } from "./sprintService";
-import { createReflection, listReflections } from "./reflectionService";
+import { appendReflection, createReflection, getReflection, listReflections, reflectionAccess, ReflectionError } from "./reflectionService";
 import { chunkText, hashChunk, getEmbedding, getEmbeddings } from "./openai";
 import { handleChatMessage } from "./chatOrchestrator";
 import { validateProposal } from "./proposalSchema";
@@ -786,9 +786,9 @@ export async function registerRoutes(
   });
 
   // Sprint reflections
-  app.get("/api/reflections/recent", requireAuth, async (_req, res) => {
+  app.get("/api/reflections/recent", requireAuth, async (req, res) => {
     try {
-      return res.json(await listReflections({ limit: 10 }));
+      return res.json(await listReflections(req.user!, { limit: 10 }));
     } catch (err: any) {
       return res.status(500).json({ message: err.message });
     }
@@ -804,11 +804,36 @@ export async function registerRoutes(
       if (authorId != null && (!Number.isInteger(authorId) || authorId < 1)) {
         return res.status(400).json({ message: "Invalid person filter" });
       }
-      return res.json(await listReflections({ sprintId, authorId }));
+      return res.json(await listReflections(req.user!, { sprintId, authorId }));
     } catch (err: any) {
       return res.status(500).json({ message: err.message });
     }
   });
+
+  app.get("/api/reflections/access", requireAuth, async (req, res) => {
+    try { return res.json(await reflectionAccess(req.user!)); }
+    catch { return res.status(500).json({ message: "Could not load reflection access" }); }
+  });
+  app.get("/api/reflections/:id", requireAuth, async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isSafeInteger(id) || id < 1) return res.status(400).json({ message: "Invalid reflection" });
+    try { return res.json(await getReflection(req.user!, id)); }
+    catch (err) {
+      return res.status(err instanceof ReflectionError ? err.status : 500).json({ message: err instanceof Error ? err.message : "Could not load reflection" });
+    }
+  });
+  app.post("/api/reflections/:id/additions", requireAuth, async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isSafeInteger(id) || id < 1) return res.status(400).json({ message: "Invalid reflection" });
+    try {
+      const detail = await appendReflection(req.user!, id, req.body);
+      return res.json(detail);
+    } catch (err) {
+      return res.status(err instanceof ReflectionError ? err.status : 500).json({ message: err instanceof Error ? err.message : "Could not save additions" });
+    }
+  });
+  app.all(["/api/reflections/:id", "/api/reflections/:id/additions"], requireAuth, (_req, res) =>
+    res.status(405).json({ message: "Original reflections and previous additions cannot be changed or deleted" }));
 
   app.post("/api/reflections", requireAuth, async (req, res) => {
     try {

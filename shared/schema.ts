@@ -185,7 +185,37 @@ export type SprintReflection = {
   kaizenDone: string;
   impact: string;
   createdAt: string;
+  additions?: ReflectionAddition[];
 };
+
+export const reflectionFields = ["summary", "kaizenWhat", "kaizenWhy", "kaizenDone", "impact", "wasteDescription", "newWaste"] as const;
+export const reflectionFieldLabels: Record<(typeof reflectionFields)[number], string> = {
+  summary: "Sprint summary", kaizenWhat: "Kaizen what", kaizenWhy: "Kaizen why",
+  kaizenDone: "Definition of done", impact: "Impact statement",
+  wasteDescription: "Waste description", newWaste: "New waste",
+};
+export const reflectionAdditionItemSchema = z.object({
+  field: z.enum(reflectionFields),
+  text: z.string().trim().max(100_000),
+  wasteIndex: z.number().int().nonnegative().optional(),
+  wasteAdditionId: z.number().int().positive().optional(),
+  category: z.enum(wasteCategories).optional(),
+}).strict().superRefine((item, ctx) => {
+  const targetCount = Number(item.wasteIndex != null) + Number(item.wasteAdditionId != null);
+  if ((item.field === "wasteDescription" && targetCount !== 1) ||
+      (item.field !== "wasteDescription" && targetCount !== 0) ||
+      (item.field === "newWaste" ? !item.category : item.category != null)) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Invalid waste target or category" });
+  }
+});
+export const appendReflectionSchema = z.object({
+  additions: z.array(reflectionAdditionItemSchema).max(100).transform(items => items.filter(item => item.text.length > 0)),
+}).strict().refine(input => input.additions.length > 0, "Add some new text");
+export type AppendReflection = z.infer<typeof appendReflectionSchema>;
+export type ReflectionAddition = z.infer<typeof reflectionAdditionItemSchema> & {
+  id: number; reflectionId: number; authorId: number | null; authorName: string; createdAt: string;
+};
+export type ReflectionAccess = { sprintId: number; sprintNumber: number; submitted: boolean; canRead: boolean };
 
 export const reflectionWasteSchema = z.object({
   category: z.enum(wasteCategories),

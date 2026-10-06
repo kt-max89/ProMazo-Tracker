@@ -253,7 +253,7 @@ async function executeReadTool(
     };
   }
   if (call.intent === "SEE_TEAM") {
-    const result = await runSeeTeamTool(call.args, storage);
+    const result = await runSeeTeamTool(call.args, storage, user);
     return {
       toolResult: { type: "team", content: result.content, isEmpty: result.isEmpty, suggestRetry: result.suggestRetry },
       docChunks: [],

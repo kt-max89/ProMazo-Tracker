@@ -260,7 +260,7 @@ test("team reader returns authenticated roster, updates, and filtered reflection
       person: user.displayName,
       sprintNumber: sprint.number,
       limit: 5,
-    }, storage);
+    }, storage, authenticatedUser);
     assert.equal(result.isEmpty, false);
     assert.match(result.content, new RegExp(user.displayName));
     assert.match(result.content, new RegExp(`Launch update ${suffix}`));
@@ -286,7 +286,8 @@ test("team reader keeps roster results when another team subsection fails", asyn
 
   const result = await runSeeTeamTool({
     include: ["people", "reflections"],
-  }, storage, {
+  }, storage, { id: 1, role: "user", displayName: "Viewer" }, {
+    getReflectionAccess: async () => [],
     listSprintReflections: async () => {
       throw new Error("reflection source unavailable");
     },
@@ -302,7 +303,8 @@ test("unfiltered reflections do not depend on sprint metadata", async () => {
   const storage = { getAllUsers: async () => [] } as unknown as IStorage;
   const result = await runSeeTeamTool({
     include: ["reflections"],
-  }, storage, {
+  }, storage, { id: 1, role: "user", displayName: "Viewer" }, {
+    getReflectionAccess: async () => [],
     listSprintReflections: async () => [{
       id: 1,
       authorId: 1,
@@ -332,7 +334,8 @@ test("current-sprint reflection lookup surfaces settings failures", async () => 
   const result = await runSeeTeamTool({
     include: ["reflections"],
     currentSprint: true,
-  }, storage, {
+  }, storage, { id: 1, role: "user", displayName: "Viewer" }, {
+    getReflectionAccess: async () => [],
     listSprintReflections: async () => [],
     listTrackerSprints: async () => [{ id: 72, number: 72, createdAt: "2026-09-16T00:00:00.000Z" }],
     getSettings: async () => {

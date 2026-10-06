@@ -19,6 +19,7 @@ import {
   ClipboardCheck,
   Trash2,
   ChevronRight,
+  LockKeyhole,
 } from "lucide-react";
 import { AppSidebar } from "@/components/app-sidebar";
 import { Button } from "@/components/ui/button";
@@ -27,7 +28,7 @@ import { useAuth } from "@/lib/auth";
 import { useTheme } from "@/components/theme-provider";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import type { Project, SprintReflection, TeamPost, Team } from "@shared/schema";
+import type { Project, SprintReflection, TeamPost, Team, ReflectionAccess } from "@shared/schema";
 import type { Sprint, TrackerSettings } from "@shared/schema";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -67,6 +68,7 @@ export default function TeamOverviewPage() {
   const addUpdateRef = useRef<HTMLButtonElement>(null);
   const restoreComposerFocus = useRef(false);
   const [reflectionOpen, setReflectionOpen] = useState(false);
+  const [initialReflectionSprintId, setInitialReflectionSprintId] = useState<number | undefined>();
   const [selectedReflection, setSelectedReflection] = useState<SprintReflection | null>(null);
   const [postToDelete, setPostToDelete] = useState<TeamPost | null>(null);
   const [teamName, setTeamName] = useState("");
@@ -143,6 +145,10 @@ export default function TeamOverviewPage() {
   const reflectionsQuery = useQuery<SprintReflection[]>({
     queryKey: ["/api/reflections/recent"],
   });
+  const reflectionAccessQuery = useQuery<ReflectionAccess[]>({
+    queryKey: ["/api/reflections/access"],
+  });
+  const currentSprintAccess = reflectionAccessQuery.data?.find(item => item.sprintId === sprintSettingsQuery.data?.currentSprintId);
 
   const createMutation = useMutation({
     mutationFn: (postBody: string) =>
@@ -563,6 +569,44 @@ export default function TeamOverviewPage() {
                   </Button>
                 </div>
               </div>
+              {reflectionAccessQuery.isError && (
+                <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+                  Couldn’t load reflection access. <button className="underline" onClick={() => reflectionAccessQuery.refetch()}>Retry</button>
+                </div>
+              )}
+              {currentSprintAccess && (
+                <div className="flex flex-col gap-3 rounded-lg border bg-card px-4 py-3 sm:flex-row sm:items-center" data-testid="current-sprint-reflection-access">
+                  <div className="flex items-start gap-2">
+                    {!currentSprintAccess.canRead && user?.role !== "admin" && <LockKeyhole className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />}
+                    <div>
+                      <p className="text-sm font-medium">Sprint {currentSprintAccess.sprintNumber} access</p>
+                      <p className="text-sm text-muted-foreground">
+                        {!currentSprintAccess.submitted
+                          ? currentSprintAccess.canRead || user?.role === "admin"
+                            ? "No reflection submitted for you in this sprint."
+                            : "Submit your reflection for this sprint before viewing other people's reflections."
+                          : !currentSprintAccess.canRead && user?.role !== "admin"
+                            ? "Sprint reflections are locked for your account."
+                            : "Sprint reflections are available to read."}
+                      </p>
+                    </div>
+                  </div>
+                  {!currentSprintAccess.submitted && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="sm:ml-auto"
+                      onClick={() => {
+                        setInitialReflectionSprintId(currentSprintAccess.sprintId);
+                        setReflectionOpen(true);
+                      }}
+                      data-testid={`button-submit-current-reflection-${currentSprintAccess.sprintId}`}
+                    >
+                      <Plus className="mr-1.5 h-3.5 w-3.5" />Submit Sprint {currentSprintAccess.sprintNumber} reflection
+                    </Button>
+                  )}
+                </div>
+              )}
               {reflectionsQuery.isLoading ? (
                 <div className="flex items-center justify-center py-10 text-muted-foreground">
                   <Loader2 className="h-5 w-5 animate-spin" />
@@ -585,7 +629,11 @@ export default function TeamOverviewPage() {
           </div>
         </main>
       </div>
-      <ReflectionDialog open={reflectionOpen} onClose={() => setReflectionOpen(false)} />
+      <ReflectionDialog
+        open={reflectionOpen}
+        initialSprintId={initialReflectionSprintId ?? sprintSettingsQuery.data?.currentSprintId ?? undefined}
+        onClose={() => setReflectionOpen(false)}
+      />
       <ReflectionDetailDialog
         reflection={selectedReflection}
         onClose={() => setSelectedReflection(null)}

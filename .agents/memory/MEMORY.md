@@ -12,3 +12,4 @@
 - [Runtime environment labels](runtime-environment.md) — a workspace can report production while connected to the managed development database; confirm the target before writes.
 - [Milestone sprint intent](milestone-sprint-policy.md) — future sprints are selected by default; explicit exclusions persist and never reschedule tasks.
 - [Live collaboration boundaries](live-collaboration-boundaries.md) — synchronize saved work, preserve drafts and selections, and never promise overwrite prevention or expose private destinations.
+- [Reflection preservation](reflection-policy.md) — preserve historical duplicates and append-only content; do not add one-per-sprint constraints or team-based privacy.

@@ -1,9 +1,9 @@
 import { useState } from "react";
 import { LivePresence } from "@/lib/live";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, BookOpen, Loader2, LogOut, Moon, PanelLeft, Settings, Sun, UsersRound } from "lucide-react";
+import { ArrowLeft, BookOpen, Loader2, LogOut, Moon, PanelLeft, Settings, Sun, UsersRound, LockKeyhole, Plus } from "lucide-react";
 import { Link, useLocation } from "wouter";
-import type { Sprint, SprintReflection } from "@shared/schema";
+import type { ReflectionAccess, Sprint, SprintReflection } from "@shared/schema";
 import { AppSidebar } from "@/components/app-sidebar";
 import { ReflectionDetailDialog } from "@/components/reflection-detail-dialog";
 import { ReflectionsTable } from "@/components/reflections-table";
@@ -18,6 +18,7 @@ import {
 import { useAuth } from "@/lib/auth";
 import { useTheme } from "@/components/theme-provider";
 import { apiRequest } from "@/lib/queryClient";
+import { ReflectionDialog } from "@/components/reflection-dialog";
 
 type AppUser = { id: number; displayName: string; email: string };
 
@@ -29,9 +30,12 @@ export default function ReflectionsPage() {
   const [sprintFilter, setSprintFilter] = useState("all");
   const [personFilter, setPersonFilter] = useState("all");
   const [selected, setSelected] = useState<SprintReflection | null>(null);
+  const [reflectionOpen, setReflectionOpen] = useState(false);
+  const [initialSprintId, setInitialSprintId] = useState<number | undefined>();
 
   const { data: sprints = [] } = useQuery<Sprint[]>({ queryKey: ["/api/sprints"] });
   const { data: users = [] } = useQuery<AppUser[]>({ queryKey: ["/api/users"] });
+  const accessQuery = useQuery<ReflectionAccess[]>({ queryKey: ["/api/reflections/access"] });
   const reflectionsQuery = useQuery<SprintReflection[]>({
     queryKey: ["/api/reflections", sprintFilter, personFilter],
     queryFn: () => {
@@ -42,6 +46,11 @@ export default function ReflectionsPage() {
       return apiRequest("GET", `/api/reflections${query ? `?${query}` : ""}`).then(response => response.json());
     },
   });
+  const relevantAccess = (accessQuery.data ?? []).filter(item => sprintFilter === "all" || String(item.sprintId) === sprintFilter);
+  const openReflectionForm = (sprintId: number) => {
+    setInitialSprintId(sprintId);
+    setReflectionOpen(true);
+  };
 
   return (
     <div className="h-screen flex bg-background" data-testid="reflections-page">
@@ -128,6 +137,42 @@ export default function ReflectionsPage() {
               </div>
             </div>
 
+            {accessQuery.isError ? (
+              <div className="mb-5 rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
+                Sprint reflection access could not be loaded. <button className="underline" onClick={() => accessQuery.refetch()}>Retry</button>
+              </div>
+            ) : relevantAccess.length > 0 && (
+              <section className="mb-5 space-y-2" aria-label="Reflection access by sprint" data-testid="reflection-access-status">
+                {relevantAccess.map(access => {
+                  const sprint = sprints.find(item => item.id === access.sprintId);
+                  return (
+                    <div key={access.sprintId} className="flex flex-col gap-3 rounded-lg border bg-card px-4 py-3 sm:flex-row sm:items-center">
+                      <div className="flex min-w-0 items-start gap-2">
+                        {!access.canRead && user?.role !== "admin" && <LockKeyhole className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />}
+                        <div>
+                          <p className="text-sm font-medium">Sprint {access.sprintNumber}</p>
+                          <p className="text-sm text-muted-foreground">
+                            {!access.submitted
+                              ? access.canRead || user?.role === "admin"
+                                ? "No reflection submitted yet."
+                                : "Submit your reflection for this sprint before viewing other people's reflections."
+                              : !access.canRead && user?.role !== "admin"
+                                ? "This sprint’s reflection is locked until access is granted."
+                                : "Reflection submitted."}
+                          </p>
+                        </div>
+                      </div>
+                      {!access.submitted && sprint && (
+                        <Button size="sm" variant="outline" className="sm:ml-auto" onClick={() => openReflectionForm(access.sprintId)} data-testid={`button-submit-reflection-sprint-${access.sprintId}`}>
+                          <Plus className="mr-1.5 h-3.5 w-3.5" />Submit reflection
+                        </Button>
+                      )}
+                    </div>
+                  );
+                })}
+              </section>
+            )}
+
             {reflectionsQuery.isLoading ? (
               <div className="flex justify-center py-16 text-muted-foreground">
                 <Loader2 className="h-5 w-5 animate-spin" />
@@ -155,6 +200,11 @@ export default function ReflectionsPage() {
         </main>
       </div>
       <ReflectionDetailDialog reflection={selected} onClose={() => setSelected(null)} />
+      <ReflectionDialog
+        open={reflectionOpen}
+        initialSprintId={initialSprintId}
+        onClose={() => setReflectionOpen(false)}
+      />
     </div>
   );
 }

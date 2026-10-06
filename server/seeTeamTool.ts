@@ -1,7 +1,8 @@
 import type { IStorage } from "./storage";
 import type { SeeTeamArgs } from "./toolIntentSelector";
 import { listTeamPosts } from "./teamPostService";
-import { listReflections } from "./reflectionService";
+import { listReflections, reflectionAccess, type ReflectionViewer } from "./reflectionService";
+import { reflectionFieldLabels } from "@shared/schema";
 import { getSprint, getTrackerSettings, listSprints } from "./sprintService";
 
 export type SeeTeamResult = {
@@ -15,6 +16,7 @@ type TeamToolSources = {
   listSprintReflections: typeof listReflections;
   listTrackerSprints: typeof listSprints;
   getSettings: typeof getTrackerSettings;
+  getReflectionAccess: typeof reflectionAccess;
 };
 
 const defaultSources: TeamToolSources = {
@@ -22,11 +24,13 @@ const defaultSources: TeamToolSources = {
   listSprintReflections: listReflections,
   listTrackerSprints: listSprints,
   getSettings: getTrackerSettings,
+  getReflectionAccess: reflectionAccess,
 };
 
 export async function runSeeTeamTool(
   args: SeeTeamArgs,
   storage: IStorage,
+  viewer: ReflectionViewer,
   sourceOverrides: Partial<TeamToolSources> = {},
 ): Promise<SeeTeamResult> {
   const sources = { ...defaultSources, ...sourceOverrides };
@@ -35,12 +39,13 @@ export async function runSeeTeamTool(
   const needsSprintMetadata =
     include.has("sprint") || args.sprintNumber != null || args.currentSprint === true;
 
-  const [usersSource, postsSource, reflectionsSource, sprintsSource, settingsSource] = await Promise.all([
+  const [usersSource, postsSource, reflectionsSource, sprintsSource, settingsSource, accessSource] = await Promise.all([
     settleSource(include.has("people") || Boolean(args.person), () => storage.getAllUsers(), []),
     settleSource(include.has("updates"), () => sources.listPosts(true), []),
-    settleSource(include.has("reflections"), () => sources.listSprintReflections(), []),
+    settleSource(include.has("reflections"), () => sources.listSprintReflections(viewer), []),
     settleSource(needsSprintMetadata, () => sources.listTrackerSprints(), []),
     settleSource(include.has("sprint") || args.currentSprint === true, () => sources.getSettings(), undefined),
+    settleSource(include.has("reflections"), () => sources.getReflectionAccess(viewer), []),
   ]);
   const users = usersSource.value;
   const posts = postsSource.value;
@@ -128,6 +133,7 @@ export async function runSeeTeamTool(
               reflection.kaizenDone,
               reflection.impact,
               ...reflection.wastes.map(waste => waste.description),
+              ...(reflection.additions ?? []).map(item => item.text),
             ].some(value => value.toLowerCase().includes(query));
           })
           .slice(0, limit);
@@ -136,6 +142,14 @@ export async function runSeeTeamTool(
       (args.currentSprint ? (settingsSource.error ?? sprintsSource.error) : undefined) ??
       (args.sprintNumber != null ? sprintsSource.error : undefined);
     parts.push("=== SPRINT REFLECTIONS (live data) ===");
+    if (accessSource.error) {
+      parts.push(`Access status unavailable: ${accessSource.error}`);
+    } else {
+      const locked = accessSource.value.filter(access => !access.canRead && (sprintId == null || access.sprintId === sprintId));
+      for (const access of locked) {
+        parts.push(`Sprint ${access.sprintNumber}: Submit your own valid reflection for this sprint before viewing other people's reflections.`);
+      }
+    }
     if (reflectionSourceError) {
       parts.push(`Source unavailable: ${reflectionSourceError}`);
     } else if (matchingReflections.length === 0) {
@@ -150,6 +164,8 @@ export async function runSeeTeamTool(
           `Done: ${reflection.kaizenDone}`,
           `Impact: ${reflection.impact}`,
           `Wastes: ${reflection.wastes.map(waste => `${waste.category}: ${waste.description}`).join("; ")}`,
+          ...(reflection.additions ?? []).map(item =>
+            `Addition ${item.createdAt} — ${item.authorName} — ${reflectionFieldLabels[item.field]}${item.wasteIndex != null ? ` #${item.wasteIndex + 1}` : item.wasteAdditionId != null ? ` (new waste ${item.wasteAdditionId})` : ""}${item.category ? ` (${item.category})` : ""}: ${item.text}`),
         );
       }
       resultCount += matchingReflections.length;

@@ -42,7 +42,12 @@ export function LiveProvider({ children }: { children: React.ReactNode }) {
       if (invalidateTimer) return;
       invalidateTimer = setTimeout(() => {
         invalidateTimer = undefined;
-        const roots = new Set(Array.from(domains).flatMap(value => sharedQueryRoots[value])); domains.clear();
+        const roots = new Set(Array.from(domains).flatMap(value => sharedQueryRoots[value]));
+        if (roots.has("/api/reflections") || roots.has("/api/reflections/recent")) {
+          roots.add("/api/reflections/access");
+          roots.add("/api/reflections/detail");
+        }
+        domains.clear();
         void queryClient.invalidateQueries({
           predicate: query => roots.has(String(query.queryKey[0])),
           refetchType: "active",
