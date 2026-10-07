@@ -11,6 +11,8 @@ import type { IStorage } from "./storage";
 import type { User } from "@shared/schema";
 import { settleReadToolCalls } from "./readToolExecution";
 import { isFirstChatTurn, loadTeamSprintContext, runProjectKnowledgeTool } from "./projectKnowledgeTool";
+import { prepareTaskEdit, buildTaskEditProposal, type TaskEditContext } from "./taskEditService";
+import type { TaskEditProposal } from "@shared/taskEdits";
 
 if (!process.env.OPENAI_API_KEY) {
   console.warn("OPENAI_API_KEY not set - AI features will not work");
@@ -37,6 +39,7 @@ export type OrchestratorYield =
   | { type: "citations"; data: DocChunk[] }
   | { type: "token"; data: string }
   | { type: "task_proposal"; data: ValidatedProposal }
+  | { type: "task_edit_proposal"; data: TaskEditProposal }
   | { type: "done" }
   | { type: "error"; data: string };
 
@@ -99,6 +102,7 @@ export async function* handleChatMessage(
   }
 
   const toolResults: ToolResult[] = [];
+  let editContext: TaskEditContext | undefined;
   yield { type: "route", data: "TEAM_SPRINT_PLANS" };
   let docChunks: DocChunk[] = [];
 
@@ -118,6 +122,7 @@ export async function* handleChatMessage(
       continue;
     }
     toolResults.push(outcome.value.toolResult);
+    if (outcome.call.intent === "PREPARE_TASK_EDIT") editContext = outcome.value.editContext;
     docChunks.push(...outcome.value.docChunks);
   }
 
@@ -182,13 +187,24 @@ export async function* handleChatMessage(
   // Parse the JSON response — graceful degradation on failure
   let answerText = rawContent;
   let proposal: ValidatedProposal | null = null;
+  let editProposal: TaskEditProposal | null = null;
 
   try {
     const parsed = JSON.parse(rawContent);
     if (typeof parsed.answer === "string" && parsed.answer.trim()) {
       answerText = parsed.answer.trim();
       // Only attempt proposal parsing if answer succeeded
-      if (parsed.proposal !== undefined) {
+      if (toolCalls.some(call => call.intent === "PREPARE_TASK_EDIT")) {
+        try {
+          editProposal = parsed.proposal === undefined
+            ? await buildTaskEditProposal(parsed.editProposal, editContext, storage) : null;
+          if (!editProposal && parsed.editProposal !== undefined) answerText = editContext?.content && !editContext.task ? editContext.content : "I couldn't validate this edit. Please identify one existing task and the exact changes or references to use.";
+          else if (!editProposal && parsed.proposal !== undefined) answerText = "Editing an existing task cannot create a replacement. Please identify one existing task and its changes.";
+          else if (editProposal) answerText += `\n\nReview proposed changes to task #${editProposal.taskId} (${editProposal.currentTask.title}).\n\nNothing is saved until you approve task #${editProposal.taskId}.`;
+        } catch (error) {
+          answerText = error instanceof Error ? error.message : "Could not validate the edit. Please clarify the changes.";
+        }
+      } else if (parsed.proposal !== undefined && parsed.editProposal === undefined) {
         proposal = validateProposal(parsed.proposal);
       }
     }
@@ -242,9 +258,11 @@ export async function* handleChatMessage(
   if (proposal) {
     yield { type: "task_proposal", data: proposal };
   }
+  if (editProposal) yield { type: "task_edit_proposal", data: editProposal };
 }
 
 type ExecutedReadTool = {
+  editContext?: TaskEditContext;
   toolResult: ToolResult;
   docChunks: DocChunk[];
 };
@@ -254,6 +272,10 @@ async function executeReadTool(
   user: User,
   storage: IStorage,
 ): Promise<ExecutedReadTool> {
+  if (call.intent === "PREPARE_TASK_EDIT") {
+    const context = await prepareTaskEdit(call.args, storage, user.id);
+    return { toolResult: { type: "task_edit", content: context.content, isEmpty: false }, docChunks: [], editContext: context };
+  }
   if (call.intent === "SEE_TASKS") {
     const result = await runSeeTasksTool(call.args);
     return {
@@ -289,6 +311,7 @@ async function executeReadTool(
 }
 
 function resultTypeForIntent(intent: ToolCall["intent"]): ToolResult["type"] {
+  if (intent === "PREPARE_TASK_EDIT") return "task_edit";
   if (intent === "SEE_TASKS") return "tasks";
   if (intent === "SEE_PROJECTS") return "projects";
   if (intent === "SEE_TEAM") return "team";

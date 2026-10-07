@@ -24,6 +24,7 @@ import { appendReflection, createReflection, getReflection, listReflections, ref
 import { chunkText, hashChunk, getEmbedding, getEmbeddings } from "./openai";
 import { handleChatMessage } from "./chatOrchestrator";
 import { reviewedProposalSchema } from "./proposalSchema";
+import { approveTaskEdit } from "./taskEditService";
 import { ProposalAssignmentError, resolveProposalAssignments } from "../shared/proposalAssignments";
 import { listDriveFiles, listDriveFolders, listFilesInFolder, getFilePermissions, getDriveFileContent } from "./google-drive";
 
@@ -528,6 +529,8 @@ export async function registerRoutes(
           res.write(`data: ${JSON.stringify({ type: "done" })}\n\n`);
         } else if (event.type === "task_proposal") {
           res.write(`data: ${JSON.stringify({ type: "task_proposal", data: event.data })}\n\n`);
+        } else if (event.type === "task_edit_proposal") {
+          res.write(`data: ${JSON.stringify({ type: "task_edit_proposal", data: event.data })}\n\n`);
         } else if (event.type === "error") {
           res.write(`data: ${JSON.stringify({ type: "error", data: event.data })}\n\n`);
         }
@@ -612,6 +615,14 @@ export async function registerRoutes(
   });
 
   // Task proposal approval — re-validates server-side, creates tasks through taskService only
+  app.post("/api/task-edit-proposals/approve", requireAuth, async (req, res) => {
+    try {
+      return res.json(await approveTaskEdit(req.body, req.user!.id, storage));
+    } catch (error) {
+      return res.status(400).json({ message: error instanceof Error ? error.message : "Could not save task edit. Please try again." });
+    }
+  });
+
   app.post("/api/task-proposals/approve", requireAuth, async (req, res) => {
     try {
       const { tasks: rawTasks } = req.body;

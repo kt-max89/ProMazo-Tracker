@@ -12,6 +12,9 @@ import { AppSidebar } from "@/components/app-sidebar";
 import type { Sprint, TrackerSettings } from "@shared/schema";
 import { eligibleProposalUsers, legacyProposalAssignment, type AssignmentUser } from "@shared/proposalAssignments";
 import { ProposalAssigneeSelect } from "@/components/proposal-assignee-select";
+import { TaskEditProposalReview } from "@/components/task-edit-proposal-review";
+import type { TaskEditProposal } from "@shared/taskEdits";
+import type { Task } from "@shared/schema";
 
 type Citation = {
   documentId: number;
@@ -21,7 +24,7 @@ type Citation = {
   similarity: number;
 };
 
-type ToolUsed = "SEE_TASKS" | "READ_DOCS" | "SEE_PROJECTS" | "SEE_TEAM" | "READ_PROJECT_CONTEXT" | "TEAM_SPRINT_PLANS" | "NO_TOOL";
+type ToolUsed = "SEE_TASKS" | "READ_DOCS" | "SEE_PROJECTS" | "SEE_TEAM" | "READ_PROJECT_CONTEXT" | "PREPARE_TASK_EDIT" | "TEAM_SPRINT_PLANS" | "NO_TOOL";
 
 type Message = {
   role: "user" | "assistant";
@@ -401,6 +404,7 @@ export default function ChatPage() {
   const [activeSessionId, setActiveSessionId] = useState<number | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(() => window.innerWidth >= 768);
   const [pendingProposal, setPendingProposal] = useState<ValidatedProposal | null>(null);
+  const [pendingEditProposal, setPendingEditProposal] = useState<TaskEditProposal | null>(null);
   const [isCreatingTasks, setIsCreatingTasks] = useState(false);
   const [, setLocation] = useLocation();
   const { toast } = useToast();
@@ -475,6 +479,7 @@ export default function ChatPage() {
     setMessages([]);
     setQuery("");
     setPendingProposal(null);
+    setPendingEditProposal(null);
   }
 
   async function handleDeleteSession(e: React.MouseEvent, sessionId: number) {
@@ -576,6 +581,8 @@ export default function ChatPage() {
               });
             } else if (parsed.type === "task_proposal") {
               setPendingProposal(parsed.data as ValidatedProposal);
+            } else if (parsed.type === "task_edit_proposal") {
+              setPendingEditProposal(parsed.data as TaskEditProposal);
             } else if (parsed.type === "error") {
               throw new Error(parsed.data);
             }
@@ -656,6 +663,19 @@ export default function ChatPage() {
           onNotYet={handleNotYet}
           onCreateTasks={handleCreateTasks}
           isCreating={isCreatingTasks}
+        />
+      )}
+      {pendingEditProposal && (
+        <TaskEditProposalReview
+          proposal={pendingEditProposal}
+          onClose={() => setPendingEditProposal(null)}
+          onApproved={(task: Task) => {
+            setPendingEditProposal(null);
+            setMessages(prev => [...prev, {
+              role: "assistant",
+              content: `Updated task #${task.id}: ${task.title}.`,
+            }]);
+          }}
         />
       )}
 
@@ -748,11 +768,13 @@ export default function ChatPage() {
                            {msg.toolsUsed.filter(tool => tool !== "NO_TOOL").map(tool => (
                              <span key={tool} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-muted text-muted-foreground/70 text-[11px]">
                                {tool === "SEE_TASKS" && <ListTodo className="w-3 h-3" />}
+                               {tool === "PREPARE_TASK_EDIT" && <ListTodo className="w-3 h-3" />}
                                {tool === "SEE_PROJECTS" && <FolderKanban className="w-3 h-3" />}
                                {(tool === "READ_PROJECT_CONTEXT" || tool === "TEAM_SPRINT_PLANS") && <BookOpen className="w-3 h-3" />}
                                {tool === "SEE_TEAM" && <Users className="w-3 h-3" />}
                                {tool === "READ_DOCS" && <FileText className="w-3 h-3" />}
                                {tool === "SEE_TASKS" && "Task Board"}
+                               {tool === "PREPARE_TASK_EDIT" && "Task edit lookup"}
                                {tool === "SEE_PROJECTS" && "Projects"}
                                {tool === "READ_PROJECT_CONTEXT" && "Plans & overviews"}
                                {tool === "TEAM_SPRINT_PLANS" && "Team sprint plans"}

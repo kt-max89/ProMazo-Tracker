@@ -5,6 +5,7 @@ import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { chromium, expect } from "@playwright/test";
 import { pool } from "../server/db";
+import bcrypt from "bcrypt";
 
 const baseURL = process.env.CHAT_TEST_BASE_URL ??
   (process.env.REPLIT_DEV_DOMAIN ? `https://${process.env.REPLIT_DEV_DOMAIN}` : "http://127.0.0.1:5000");
@@ -24,8 +25,13 @@ const errors: string[] = [];
 page.on("pageerror", error => errors.push(error.message));
 
 try {
-  const registration = await context.request.post("/api/auth/register", {
-    data: { email: `draft-${suffix}@example.test`, displayName: `Draft Test ${suffix}`, password: randomUUID() },
+  // Fixture login avoids depending on the workspace's private registration code.
+  const email = `draft-${suffix}@example.test`, password = randomUUID();
+  const fixture = await pool.query("INSERT INTO users(email,password_hash,display_name) VALUES($1,$2,$3) RETURNING id",
+    [email, await bcrypt.hash(password, 4), `Draft Test ${suffix}`]);
+  userId = fixture.rows[0].id;
+  const registration = await context.request.post("/api/auth/login", {
+    data: { email, password },
   });
   assert.equal(registration.status(), 200);
   userId = (await registration.json()).id;
@@ -118,13 +124,16 @@ try {
   console.log("PASS: desktop/mobile growth, wrapping, scrolling, deletion, New Chat, keyboard, streaming guards, live generation, review editing, approval, saved description and markdown display.");
   console.log(JSON.stringify({ baseline, wideHeight, generatedDescription: generated }));
 } finally {
+  await context.request.post("/api/auth/logout").catch(() => {});
   await context.close();
   await browser.close();
   if (userId !== undefined) {
     await pool.query("DELETE FROM task_assignees WHERE task_id IN (SELECT id FROM tasks WHERE created_by = $1)", [userId]);
-    // Other FK cascades remove activity/messages, not unrelated data.
+    await pool.query("DELETE FROM task_activity WHERE task_id IN (SELECT id FROM tasks WHERE created_by = $1)", [userId]);
     await pool.query("DELETE FROM tasks WHERE created_by = $1", [userId]);
+    await pool.query("DELETE FROM chat_messages WHERE session_id IN (SELECT id FROM chat_sessions WHERE user_id = $1)", [userId]);
     await pool.query("DELETE FROM chat_sessions WHERE user_id = $1", [userId]);
+    await pool.query("DELETE FROM presence_leases WHERE user_id = $1", [userId]);
     await pool.query("DELETE FROM users WHERE id = $1", [userId]);
   }
   await pool.end();

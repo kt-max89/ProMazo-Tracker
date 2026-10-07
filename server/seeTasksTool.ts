@@ -64,7 +64,7 @@ async function enrichTasks(tasks: Task[]): Promise<CompactTask[]> {
 }
 
 function formatCompact(t: CompactTask): string {
-  let line = `- [${t.status}] ${t.title}`;
+  let line = `- #${t.id} [${t.status}] ${t.title}`;
   if (t.projectName) line += ` | Project: ${t.projectName}`;
   if (t.milestoneName) line += ` | Milestone: ${t.milestoneName}`;
   if (t.assigneeNames && t.assigneeNames.length > 0) line += ` | Assigned to: ${t.assigneeNames.join(", ")}`;
