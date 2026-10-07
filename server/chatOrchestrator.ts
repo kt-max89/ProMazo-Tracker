@@ -5,6 +5,7 @@ import { runReadDocsTool } from "./readDocsTool";
 import { runSeeProjectsTool } from "./seeProjectsTool";
 import { runSeeTeamTool } from "./seeTeamTool";
 import { buildPrompt, type ToolResult, type HistoryMessage } from "./promptBuilder";
+import { getAgentInstructions } from "./agentInstructionsService";
 import { validateProposal, type ValidatedProposal } from "./proposalSchema";
 import type { DocChunk } from "./documentRetrievalService";
 import type { IStorage } from "./storage";
@@ -94,6 +95,15 @@ export async function* handleChatMessage(
   } catch {
     teamSprintContext = "Automatic team context unavailable: membership lookup failed. This does not mean that no plans exist.";
   }
+  // Read for every request, including existing conversations. Do not silently
+  // revert to defaults if the persisted policy cannot be loaded.
+  let mainAgentInstructions: string;
+  try {
+    mainAgentInstructions = (await getAgentInstructions()).instructions;
+  } catch {
+    yield { type: "error", data: "Chat instructions could not be loaded. Please try again." };
+    return;
+  }
   const toolCalls = await selectToolIntents(message, history, teamSprintContext);
   if (toolCalls.length === 0) {
     yield { type: "route", data: "NO_TOOL" };
@@ -173,6 +183,7 @@ export async function* handleChatMessage(
     teamSprintContext,
     currentUserName: user.displayName,
     tomorrowDate,
+    mainAgentInstructions,
   });
 
   const response = await openai.chat.completions.create({

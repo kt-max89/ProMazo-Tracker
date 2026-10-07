@@ -7,6 +7,7 @@ import { storage } from "./storage";
 import { registerLive, removeSessionPresence, liveCoordinator } from "./live";
 import { setupAuth, requireAuth, requireAdmin } from "./auth";
 import { registerSprintPlanRoutes } from "./sprintPlanRoutes";
+import { registerAgentInstructionsRoutes } from "./agentInstructionsRoutes";
 import { changeUserAccess, listManagedUsers, UserAccessError } from "./userAccessService";
 import { validateRegistrationCode } from "./registrationCode";
 import { userAccessActionSchema } from "@shared/schema";
@@ -37,6 +38,7 @@ export async function registerRoutes(
   setupAuth(app);
   await registerLive(app, httpServer);
   registerSprintPlanRoutes(app);
+  registerAgentInstructionsRoutes(app);
 
   app.get("/api/admin/users", requireAdmin, async (_req, res) => {
     try {

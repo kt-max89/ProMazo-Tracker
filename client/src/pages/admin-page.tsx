@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { useTheme } from "@/components/theme-provider";
 import UserManagement from "@/components/user-management";
+import AgentInstructionsSettings from "@/components/agent-instructions-settings";
 
 type Document = {
   id: number;
@@ -63,7 +64,7 @@ export default function AdminPage() {
             </button>
           </Link>
           <Shield className="w-5 h-5 text-primary" />
-          <h1 className="font-semibold text-lg">Document Management</h1>
+          <h1 className="font-semibold text-lg">Settings</h1>
         </div>
         <button
           data-testid="button-toggle-theme"
@@ -77,6 +78,7 @@ export default function AdminPage() {
       </header>
 
       <div className="max-w-4xl mx-auto p-6 space-y-6">
+        <AgentInstructionsSettings />
         <UserManagement />
         <UploadSection />
         <DriveImportSection />

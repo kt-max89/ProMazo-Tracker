@@ -13,3 +13,4 @@
 - [Milestone sprint intent](milestone-sprint-policy.md) — future sprints are selected by default; explicit exclusions persist and never reschedule tasks.
 - [Live collaboration boundaries](live-collaboration-boundaries.md) — synchronize saved work, preserve drafts and selections, and never promise overwrite prevention or expose private destinations.
 - [Reflection preservation](reflection-policy.md) — preserve historical duplicates and append-only content; do not add one-per-sprint constraints or team-based privacy.
+- [Admin-editable agent policy](agent-policy.md) — existing admins edit general policy; application contracts remain protected; verify delivery and model compliance separately.

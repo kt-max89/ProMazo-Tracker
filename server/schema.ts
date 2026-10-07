@@ -39,6 +39,14 @@ export const usersTable = pgTable("users", {
   authVersion: integer("auth_version").notNull().default(0),
 });
 
+// Shared instruction policy, separate from the application's response contracts.
+export const agentInstructionsTable = pgTable("agent_instructions", {
+  id: integer("id").primaryKey(),
+  instructions: text("instructions").notNull(),
+  version: integer("version").notNull().default(0),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, table => [check("agent_instructions_singleton", sql`${table.id} = 1`)]);
+
 // Coalesced change counters, not a record/event history.
 export const liveRevisionsTable = pgTable("live_revisions", {
   domain: text("domain").primaryKey(),

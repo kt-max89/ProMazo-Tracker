@@ -57,7 +57,8 @@ app.use((req, res, next) => {
     const duration = Date.now() - start;
     if (path.startsWith("/api")) {
       let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
-      if (capturedJsonResponse) {
+      // Administrative instruction text should not enter routine server logs.
+      if (capturedJsonResponse && path !== "/api/admin/agent-instructions") {
         logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
       }
 
