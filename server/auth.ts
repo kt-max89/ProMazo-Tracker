@@ -7,6 +7,7 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { storage } from "./storage";
 import { pool } from "./db";
 import type { User } from "@shared/schema";
+import { SESSION_LIFETIME_MS, sessionPolicy } from "./sessionPolicy";
 
 declare global {
   namespace Express {
@@ -26,6 +27,7 @@ declare global {
 const PgStore = connectPgSimple(session);
 
 export function setupAuth(app: Express) {
+  const policy = sessionPolicy(app);
   app.use(
     session({
       store: new PgStore({
@@ -33,20 +35,20 @@ export function setupAuth(app: Express) {
         tableName: "session",
         createTableIfMissing: true,
       }),
-      secret: process.env.SESSION_SECRET || "dev-secret-change-me",
-      resave: false,
-      saveUninitialized: false,
-      cookie: {
-        maxAge: 24 * 60 * 60 * 1000,
-        httpOnly: true,
-        secure: false,
-        sameSite: "lax",
-      },
+      ...policy,
     })
   );
 
   app.use(passport.initialize());
   app.use(passport.session());
+  app.use((req, _res, next) => {
+    // Existing cookies carry their old originalMaxAge in PostgreSQL. Upgrade
+    // authenticated legacy sessions too, without creating anonymous sessions.
+    if (req.isAuthenticated() && req.session.cookie.originalMaxAge !== SESSION_LIFETIME_MS) {
+      req.session.cookie.maxAge = SESSION_LIFETIME_MS;
+    }
+    next();
+  });
 
   passport.use(
     new LocalStrategy(

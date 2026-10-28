@@ -1,5 +1,5 @@
 import { createContext, useContext, useCallback, useEffect, useRef } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient, getQueryFn } from "./queryClient";
 
 type User = {
@@ -14,6 +14,8 @@ type User = {
 type AuthContextType = {
   user: User | null;
   isLoading: boolean;
+  sessionError: boolean;
+  retrySession: () => void;
   login: (email: string, password: string) => Promise<void>;
   register: (email: string, password: string, displayName: string, registrationCode: string) => Promise<void>;
   logout: () => Promise<void>;
@@ -22,11 +24,12 @@ type AuthContextType = {
 const AuthContext = createContext<AuthContextType | null>(null);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const { data: user, isLoading } = useQuery<User | null>({
+  const { data: user, isLoading, isError, refetch } = useQuery<User | null>({
     queryKey: ["/api/auth/me"],
     queryFn: getQueryFn({ on401: "returnNull" }),
     refetchInterval: 30_000,
     refetchOnWindowFocus: true,
+    staleTime: 0,
   });
 
   const previousUser = useRef<User | null | undefined>(undefined);
@@ -58,10 +61,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const logout = useCallback(async () => {
     await apiRequest("POST", "/api/auth/logout");
     queryClient.clear();
+    queryClient.setQueryData(["/api/auth/me"], null);
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user: user?.isActive === false ? null : user ?? null, isLoading, login, register, logout }}>
+    <AuthContext.Provider value={{ user: user?.isActive === false ? null : user ?? null, isLoading,
+      sessionError: isError && user === undefined, retrySession: () => { void refetch(); }, login, register, logout }}>
       {children}
     </AuthContext.Provider>
   );

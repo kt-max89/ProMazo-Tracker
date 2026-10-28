@@ -6,6 +6,7 @@ import multer from "multer";
 import { storage } from "./storage";
 import { registerLive, removeSessionPresence, liveCoordinator } from "./live";
 import { setupAuth, requireAuth, requireAdmin } from "./auth";
+import { clearSessionCookie } from "./sessionPolicy";
 import { registerSprintPlanRoutes } from "./sprintPlanRoutes";
 import { registerAgentInstructionsRoutes } from "./agentInstructionsRoutes";
 import { changeUserAccess, listManagedUsers, UserAccessError } from "./userAccessService";
@@ -169,7 +170,7 @@ export async function registerRoutes(
       req.session.destroy(async error => {
         if (error) return res.status(500).json({ message: "Logout failed" });
         try { await removeSessionPresence(sessionId); } catch { /* leases expire; session is already revoked */ }
-        res.clearCookie("connect.sid");
+        clearSessionCookie(req, res);
         res.json({ message: "Logged out" });
       });
     });

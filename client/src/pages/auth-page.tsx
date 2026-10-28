@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useAuth } from "@/lib/auth";
-import { useLocation } from "wouter";
+import { useLocation, Redirect } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 import { Zap, Lock, Mail, User, ListTodo, FileSearch, MessageSquare, PlusCircle } from "lucide-react";
 
@@ -11,8 +11,8 @@ export default function AuthPage() {
   const [displayName, setDisplayName] = useState("");
   const [registrationCode, setRegistrationCode] = useState("");
   const [loading, setLoading] = useState(false);
-  const { login, register } = useAuth();
-  const [, setLocation] = useLocation();
+  const { login, register, user } = useAuth();
+  const [location, setLocation] = useLocation();
   const { toast } = useToast();
 
   async function handleSubmit(e: React.FormEvent) {
@@ -24,7 +24,7 @@ export default function AuthPage() {
       } else {
         await register(email, password, displayName, registrationCode);
       }
-      setLocation("/");
+      if (location === "/auth") setLocation("/", { replace: true });
     } catch (err: any) {
       toast({
         title: "Error",
@@ -35,6 +35,8 @@ export default function AuthPage() {
       setLoading(false);
     }
   }
+
+  if (user) return <Redirect to="/" replace />;
 
   return (
     <div className="min-h-screen flex" data-testid="auth-page">

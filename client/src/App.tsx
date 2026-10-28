@@ -18,31 +18,17 @@ import TaskPage from "@/pages/task-page";
 import ProjectPage from "@/pages/project-page";
 import ReflectionsPage from "@/pages/reflections-page";
 import NotFound from "@/pages/not-found";
-import { Loader2 } from "lucide-react";
+import { SessionCheck } from "@/components/session-check";
 import { LiveProvider } from "@/lib/live";
 
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
-  const { user, isLoading } = useAuth();
-  if (isLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
-      </div>
-    );
-  }
+  const { user } = useAuth();
   if (!user) return <AuthPage />;
   return <Component />;
 }
 
 function AdminRoute({ component: Component }: { component: React.ComponentType }) {
-  const { user, isLoading } = useAuth();
-  if (isLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
-      </div>
-    );
-  }
+  const { user } = useAuth();
   if (!user) return <AuthPage />;
   if (user.role !== "admin") return <NotFound />;
   return <Component />;
@@ -76,7 +62,7 @@ function App() {
           <LiveProvider>
           <TooltipProvider>
             <Toaster />
-            <Router />
+            <SessionCheck><Router /></SessionCheck>
           </TooltipProvider>
           </LiveProvider>
         </AuthProvider>
