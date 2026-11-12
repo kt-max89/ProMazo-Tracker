@@ -63,7 +63,7 @@ export function AppSidebar({
   }
 
   function handleNewChat() {
-    if (activePage === "tasks" || activePage === "team-overview" || activePage === "projects") {
+    if (activePage !== "chat") {
       navigate("/");
     } else {
       onNewChat?.();
@@ -75,6 +75,19 @@ export function AppSidebar({
       <div className="p-3 border-b flex flex-col gap-2">
         <div className="flex items-center gap-2">
           <div className="flex-1 flex flex-col gap-1">
+            <Link href="/my-tasks">
+              <button
+                data-testid="link-sidebar-my-tasks"
+                className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  activePage === "my-tasks"
+                    ? "bg-primary/10 text-primary"
+                    : "hover:bg-muted text-foreground"
+                }`}
+              >
+                <UserCheck className="w-4 h-4" />
+                My tasks
+              </button>
+            </Link>
             <Link href="/tasks">
               <button
                 data-testid="link-sidebar-tasks"
@@ -85,7 +98,7 @@ export function AppSidebar({
                 }`}
               >
                 <LayoutList className="w-4 h-4" />
-                See Tasks
+                All tasks
               </button>
             </Link>
             <Link href="/team-overview">
@@ -98,20 +111,7 @@ export function AppSidebar({
                 }`}
               >
                 <UsersRound className="w-4 h-4" />
-                Team Overview
-              </button>
-            </Link>
-            <Link href="/my-tasks">
-              <button
-                data-testid="link-sidebar-my-tasks"
-                className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  activePage === "my-tasks"
-                    ? "bg-primary/10 text-primary"
-                    : "hover:bg-muted text-foreground"
-                }`}
-              >
-                <UserCheck className="w-4 h-4" />
-                My Tasks
+                Team overview
               </button>
             </Link>
           </div>

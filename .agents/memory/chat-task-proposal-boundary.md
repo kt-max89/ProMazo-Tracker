@@ -32,3 +32,9 @@ Validate generated reference identity against the resolved request, not merely e
 **Why:** A valid-but-different project or person can pass ordinary mutation validation while still contradicting the chat request. Generation validation and reviewed approval have different responsibilities.
 
 **How to apply:** Treat resolved names/IDs and requested assignee add/remove/replace semantics as the generation boundary; keep normal reference eligibility and consistency checks at approval.
+
+Starting a new conversation discards the old conversation's unsent draft and unapproved reviews, not its saved history. It must not save an empty conversation merely because the user clicked New Chat.
+
+**Why:** The approved navigation repair requires a genuinely fresh conversation. Late replies or history reads can otherwise restore a dismissed review after the visible chat has already been reset.
+
+**How to apply:** Preserve this conversation boundary when changing asynchronous chat loading or navigation. An old conversation's pending result must never become a new conversation's task review.

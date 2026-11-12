@@ -411,6 +411,20 @@ export default function ChatPage() {
   const { theme, toggleTheme } = useTheme();
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const requestGeneration = useRef(0);
+  const activeRequest = useRef<AbortController | null>(null);
+
+  useEffect(() => () => {
+    requestGeneration.current++;
+    activeRequest.current?.abort();
+  }, []);
+
+  function cancelPendingRequest() {
+    requestGeneration.current++;
+    activeRequest.current?.abort();
+    activeRequest.current = null;
+    setIsStreaming(false);
+  }
 
   useLayoutEffect(() => {
     const input = inputRef.current;
@@ -459,10 +473,15 @@ export default function ChatPage() {
   }, [messages]);
 
   async function loadSession(sessionId: number) {
+    cancelPendingRequest();
+    const generation = requestGeneration.current;
+    const controller = new AbortController();
+    activeRequest.current = controller;
     try {
-      const res = await fetch(`/api/chat-sessions/${sessionId}`, { credentials: "include" });
+      const res = await fetch(`/api/chat-sessions/${sessionId}`, { credentials: "include", signal: controller.signal });
       if (!res.ok) throw new Error("Failed to load session");
       const data = await res.json();
+      if (generation !== requestGeneration.current) return;
       setActiveSessionId(sessionId);
       setMessages(data.messages.map((m: any) => ({
         role: m.role,
@@ -470,11 +489,16 @@ export default function ChatPage() {
         citations: [],
       })));
     } catch (err: any) {
+      if (generation !== requestGeneration.current || controller.signal.aborted) return;
       toast({ title: "Error", description: err.message, variant: "destructive" });
+    } finally {
+      if (generation === requestGeneration.current) activeRequest.current = null;
     }
   }
 
   function startNewChat() {
+    // Late history loads and model responses belong to the previous chat.
+    cancelPendingRequest();
     setActiveSessionId(null);
     setMessages([]);
     setQuery("");
@@ -493,6 +517,10 @@ export default function ChatPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!query.trim() || isStreaming) return;
+    activeRequest.current?.abort();
+    const generation = ++requestGeneration.current;
+    const controller = new AbortController();
+    activeRequest.current = controller;
 
     const userMessage = query.trim();
     setQuery("");
@@ -506,6 +534,7 @@ export default function ChatPage() {
         const title = userMessage.slice(0, 60) + (userMessage.length > 60 ? "..." : "");
         const res = await apiRequest("POST", "/api/chat-sessions", { title });
         const session = await res.json();
+        if (generation !== requestGeneration.current) return;
         currentSessionId = session.id;
         setActiveSessionId(session.id);
         queryClient.invalidateQueries({ queryKey: ["/api/chat-sessions"] });
@@ -515,8 +544,10 @@ export default function ChatPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
+        signal: controller.signal,
         body: JSON.stringify({ query: userMessage, sessionId: currentSessionId }),
       });
+      if (generation !== requestGeneration.current) return;
 
       if (!response.ok) {
         const err = await response.json();
@@ -525,6 +556,7 @@ export default function ChatPage() {
 
       if (response.headers.get("content-type")?.includes("application/json")) {
         const data = await response.json();
+        if (generation !== requestGeneration.current) return;
         setMessages(prev => [...prev, { role: "assistant", content: data.answer, citations: [] }]);
         setIsStreaming(false);
         return;
@@ -543,6 +575,7 @@ export default function ChatPage() {
 
       while (true) {
         const { done, value } = await reader.read();
+        if (generation !== requestGeneration.current) return;
         if (done) break;
 
         buffer += decoder.decode(value, { stream: true });
@@ -591,6 +624,7 @@ export default function ChatPage() {
         }
       }
     } catch (err: any) {
+      if (generation !== requestGeneration.current || controller.signal.aborted) return;
       toast({
         title: "Error",
         description: err.message || "Failed to get answer",
@@ -603,7 +637,10 @@ export default function ChatPage() {
         return prev;
       });
     } finally {
-      setIsStreaming(false);
+      if (generation === requestGeneration.current) {
+        activeRequest.current = null;
+        setIsStreaming(false);
+      }
     }
   }
 
@@ -690,8 +727,8 @@ export default function ChatPage() {
       />
 
       <div className="flex-1 flex flex-col min-w-0 min-h-0">
-        <header className="border-b px-6 py-3 flex items-center justify-between shrink-0">
-          <div className="flex items-center gap-3">
+        <header data-testid="page-header" className="border-b px-4 sm:px-6 py-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 shrink-0 min-w-0">
+          <div data-testid="header-title-group" className="flex min-w-0 flex-1 items-center gap-3">
             {!sidebarOpen && (
               <button
                 data-testid="button-open-sidebar"
@@ -703,16 +740,17 @@ export default function ChatPage() {
               </button>
             )}
             <Zap className="w-5 h-5 text-primary" />
-            <h1 className="font-semibold text-lg">ProMazo Task Tracker</h1>
+            <h1 className="min-w-0 break-words font-semibold text-lg">ProMazo Task Tracker</h1>
           </div>
-          <div className="flex items-center gap-2">
-            <span className="hidden sm:inline text-sm text-muted-foreground mr-2" data-testid="text-user-name">
+          <div data-testid="header-account-group" className="ml-auto flex max-w-full min-w-0 flex-wrap items-center justify-end gap-1 sm:gap-2">
+            <span className="hidden sm:inline min-w-0 max-w-40 break-words text-right text-sm text-muted-foreground mr-2" data-testid="text-user-name">
               {user?.displayName}
             </span>
             <button
               data-testid="button-toggle-theme"
+              aria-label={theme === "light" ? "Switch to dark mode" : "Switch to light mode"}
               onClick={toggleTheme}
-              className="p-2 rounded-lg hover:bg-muted transition-colors"
+              className="shrink-0 p-2 rounded-lg hover:bg-muted transition-colors"
               title={theme === "light" ? "Switch to dark mode" : "Switch to light mode"}
             >
               {theme === "light" ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
@@ -737,8 +775,8 @@ export default function ChatPage() {
             >
               <LogOut className="w-4 h-4" />
             </button>
+            <LivePresence />
           </div>
-          <LivePresence />
         </header>
 
         <div className="flex-1 min-h-0 overflow-y-auto px-4 py-6">

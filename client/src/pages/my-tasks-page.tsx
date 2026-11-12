@@ -183,10 +183,11 @@ export default function MyTasksPage() {
 
       <div className="flex-1 flex flex-col min-w-0">
         {/* ── Header ── */}
-        <header className="border-b px-6 py-3 flex items-center justify-between shrink-0">
-          <div className="flex items-center gap-3">
+        <header data-testid="page-header" className="border-b px-4 sm:px-6 py-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 shrink-0 min-w-0">
+          <div data-testid="header-title-group" className="flex min-w-0 flex-1 items-center gap-3">
             {!sidebarOpen && (
               <button
+                data-testid="button-open-sidebar"
                 onClick={() => setSidebarOpen(true)}
                 className="p-2 rounded-lg hover:bg-muted transition-colors"
                 title="Open sidebar"
@@ -195,11 +196,11 @@ export default function MyTasksPage() {
               </button>
             )}
             <UserCheck className="w-5 h-5 text-primary" />
-            <h1 className="font-semibold text-lg">{viewLabel}</h1>
+            <h1 className="min-w-0 break-words font-semibold text-lg">{viewLabel}</h1>
           </div>
-          <div className="flex items-center gap-2">
-            <span className="hidden sm:inline text-sm text-muted-foreground mr-1">{user?.displayName}</span>
-            <button onClick={toggleTheme} className="p-2 rounded-lg hover:bg-muted transition-colors">
+          <div data-testid="header-account-group" className="ml-auto flex max-w-full min-w-0 flex-wrap items-center justify-end gap-1 sm:gap-2">
+            <span className="hidden sm:inline min-w-0 max-w-40 break-words text-right text-sm text-muted-foreground mr-1">{user?.displayName}</span>
+            <button aria-label={theme === "light" ? "Switch to dark mode" : "Switch to light mode"} onClick={toggleTheme} className="shrink-0 p-2 rounded-lg hover:bg-muted transition-colors">
               {theme === "light" ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
             </button>
             <Link href="/history">
@@ -226,8 +227,8 @@ export default function MyTasksPage() {
             >
               <LogOut className="w-4 h-4" />
             </button>
+            <LivePresence />
           </div>
-          <LivePresence />
         </header>
 
         {/* ── Toolbar ── */}
