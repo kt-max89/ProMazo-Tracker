@@ -6,7 +6,7 @@ import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { useTheme } from "@/components/theme-provider";
 import {
-  Plus, Loader2, AlertCircle, CheckCircle2, Clock, AlertTriangle,
+  Plus, Loader2, AlertTriangle,
   RotateCcw, Sun, Moon, LogOut, Zap,
   Settings, BookOpen, PanelLeft, Flag, Folder
 } from "lucide-react";
@@ -23,53 +23,10 @@ import { SearchBar } from "@/components/search-bar";
 import { TaskCard, getProjectColorClass } from "@/components/task-card";
 import { SprintFilterSelect } from "@/components/sprint-filter-select";
 import { taskMatchesSprint, type SprintFilterValue } from "@/lib/sprints";
+import { STATUSES, statusMeta } from "@/lib/task-status-meta";
 
 type AppUser = { id: number; displayName: string; email: string };
 type SharedProject = Project & { teamIds?: number[]; teamId?: number | null };
-
-const STATUSES = [
-  {
-    value: "not_started",
-    label: "Not started",
-    icon: Clock,
-    badgeColor: "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300",
-    columnBg: "bg-slate-50 dark:bg-slate-900/30",
-    columnBorder: "border-slate-200 dark:border-slate-800",
-    headerColor: "text-slate-600 dark:text-slate-400",
-  },
-  {
-    value: "in_progress",
-    label: "In progress",
-    icon: AlertCircle,
-    badgeColor: "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300",
-    columnBg: "bg-blue-50 dark:bg-blue-950/30",
-    columnBorder: "border-blue-200 dark:border-blue-900",
-    headerColor: "text-blue-700 dark:text-blue-400",
-  },
-  {
-    value: "needs_review",
-    label: "Needs review",
-    icon: Flag,
-    badgeColor: "bg-[#FF6F91]/15 text-[#FF6F91] dark:bg-[#FF6F91]/25 dark:text-[#FF6F91]",
-    columnBg: "bg-[#FF6F91]/10 dark:bg-[#FF6F91]/10",
-    columnBorder: "border-[#FF6F91]/40 dark:border-[#FF6F91]/40",
-    headerColor: "text-[#FF6F91]",
-  },
-  {
-    value: "done",
-    label: "Done",
-    icon: CheckCircle2,
-    badgeColor: "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300",
-    columnBg: "bg-green-50 dark:bg-green-950/30",
-    columnBorder: "border-green-200 dark:border-green-900",
-    headerColor: "text-green-700 dark:text-green-400",
-  },
-] as const;
-
-function statusMeta(value: string) {
-  return STATUSES.find(s => s.value === value) ?? STATUSES[0];
-}
-
 
 function ArchivedTaskCard({
   task,

@@ -4,6 +4,7 @@
   "type": "module",
   "license": "MIT",
   "scripts": {
+    "test:status-colors-browser": "tsx tests/task-status-colors.browser.ts",
     "test:session-browser": "tsx tests/session-persistence.browser.ts",
     "db:reflections": "NODE_ENV=development tsx scripts/apply-reflection-schema.ts",
     "test:reflections-browser": "tsx tests/reflections.browser.ts",

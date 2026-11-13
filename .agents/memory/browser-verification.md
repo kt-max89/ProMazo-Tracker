@@ -28,3 +28,9 @@ For tests that deliberately cancel browser-back navigation, trigger history.back
 **Why:** Playwright's goBack() can time out waiting for a load event precisely because the application's unsaved-draft guard successfully prevented navigation.
 
 **How to apply:** Use a dialog dismissal handler plus history.back() in page evaluation for guard tests; use normal navigation waiting when navigation is meant to succeed.
+
+Browser-evaluated callbacks run through tsx can depend on an injected function-name helper that does not exist in the browser.
+
+**Why:** Nested named functions serialized by Playwright failed before their assertions ran, despite working in Node.
+
+**How to apply:** Keep evaluated code self-contained, or install the transpiler's naming helper in the disposable browser context. Wait for theme transitions to finish before measuring composited contrast.
