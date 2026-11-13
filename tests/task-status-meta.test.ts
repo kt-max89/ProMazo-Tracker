@@ -13,8 +13,8 @@ test("shared board metadata preserves status values, ordering, labels and icons"
   assert.equal(statusMeta("unknown"), STATUSES[0]);
 });
 
-test("all status surfaces use gray, blue, green and purple with explicit theme variants", () => {
-  const families = ["slate", "blue", "green", "purple"];
+test("all status surfaces use gray, blue, purple and green with explicit theme variants", () => {
+  const families = ["slate", "blue", "purple", "green"];
   STATUSES.forEach((status, index) => {
     const family = families[index];
     assert.equal(status.badgeColor, index === 0

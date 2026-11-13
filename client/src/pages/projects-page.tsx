@@ -496,7 +496,7 @@ function ProjectCard({
   const STATUS_COLORS: Record<string, string> = {
     not_started: "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300",
     in_progress: "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300",
-    needs_review: "bg-rose-100 text-rose-700 dark:bg-rose-900 dark:text-rose-300",
+    needs_review: "bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300",
     done: "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300",
   };
   const STATUS_LABELS: Record<string, string> = {

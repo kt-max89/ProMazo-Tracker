@@ -86,8 +86,8 @@ try {
       if (isDark !== (theme === "dark")) await page.getByRole("button", { name: `Switch to ${theme} mode` }).click();
       await page.waitForTimeout(400); // Let theme background/color transitions finish before contrast measurement.
       const expectedColors = theme === "light"
-        ? ["rgb(71, 85, 105)", "rgb(29, 78, 216)", "rgb(21, 128, 61)", "rgb(126, 34, 206)"]
-        : ["rgb(148, 163, 184)", "rgb(96, 165, 250)", "rgb(74, 222, 128)", "rgb(192, 132, 252)"];
+        ? ["rgb(71, 85, 105)", "rgb(29, 78, 216)", "rgb(126, 34, 206)", "rgb(21, 128, 61)"]
+        : ["rgb(148, 163, 184)", "rgb(96, 165, 250)", "rgb(192, 132, 252)", "rgb(74, 222, 128)"];
       for (const [index, status] of statuses.entries()) {
         const column = page.getByTestId(`column-${status}`);
         await expect(column.getByText(labels[index], { exact: true })).toBeVisible();
