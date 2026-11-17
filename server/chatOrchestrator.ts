@@ -14,6 +14,11 @@ import { settleReadToolCalls } from "./readToolExecution";
 import { isFirstChatTurn, loadTeamSprintContext, runProjectKnowledgeTool } from "./projectKnowledgeTool";
 import { prepareTaskEdit, buildTaskEditProposal, type TaskEditContext } from "./taskEditService";
 import type { TaskEditProposal } from "@shared/taskEdits";
+import { runLookupLoop } from "./chatLookupLoop";
+import type { ClaudeMessage } from "./claudeProvider";
+import { groundCreationReferences } from "./creationGrounding";
+import { listProjects } from "./projectService";
+import { listMilestones } from "./milestoneService";
 
 if (!process.env.OPENAI_API_KEY) {
   console.warn("OPENAI_API_KEY not set - AI features will not work");
@@ -82,8 +87,8 @@ export async function* handleChatMessage(
     history = selected.map((m) => ({ role: m.role as "user" | "assistant", content: m.content }));
   }
 
-  // Step 1: select a small, bounded set of compatible read-only tools. Recent
-  // history lets the router resolve follow-ups without expanding prompt cost.
+  // Step 1: isolate existing-task edit requests. All other lookup choices are
+  // made by the answer assistant inside the bounded read-only loop.
   // Membership, selected sprint, and saved plans are refreshed for every turn,
   // including the first question, before the router sees the user's request.
   let teamSprintContext: string;
@@ -104,12 +109,15 @@ export async function* handleChatMessage(
     yield { type: "error", data: "Chat instructions could not be loaded. Please try again." };
     return;
   }
-  const toolCalls = await selectToolIntents(message, history, teamSprintContext);
-  if (toolCalls.length === 0) {
-    yield { type: "route", data: "NO_TOOL" };
-  } else {
-    for (const call of toolCalls) yield { type: "route", data: call.intent };
+  let toolCalls: ToolCall[];
+  try {
+    toolCalls = (await selectToolIntents(message, history, teamSprintContext))
+      .filter(call => call.intent === "PREPARE_TASK_EDIT");
+  } catch {
+    yield { type: "error", data: "Chat could not check whether this is an edit request. Please try again. No task changes were saved." };
+    return;
   }
+  for (const call of toolCalls) yield { type: "route", data: call.intent };
 
   const toolResults: ToolResult[] = [];
   let editContext: TaskEditContext | undefined;
@@ -136,23 +144,7 @@ export async function* handleChatMessage(
     docChunks.push(...outcome.value.docChunks);
   }
 
-  // Emit citations (empty array when document retrieval was not selected)
-  yield { type: "citations", data: docChunks };
-
-  // Persist doc citations to DB
-  if (docChunks.length > 0) {
-    for (const chunk of docChunks) {
-      await storage.createCitation({
-        userId: user.id,
-        documentId: chunk.documentId,
-        chunkId: chunk.chunkId,
-        query: message.slice(0, 500),
-        createdAt: new Date().toISOString(),
-      });
-    }
-  }
-
-  // Step 3: build final prompt and call the model.
+  // Step 3: build protected context for the isolated edit model or read loop.
   // Proactively load projects + milestones so the agent can always populate
   // projectName/milestoneName in proposals without needing a separate tool call.
   let projectsContext: string | undefined;
@@ -160,7 +152,7 @@ export async function* handleChatMessage(
     const { runSeeProjectsTool: _seeProjects } = await import("./seeProjectsTool");
     const projResult = await _seeProjects({});
     if (!projResult.isEmpty) {
-      projectsContext = projResult.content;
+      projectsContext = projResult.content.slice(0, 12000);
     }
   } catch {
     // Best-effort: if fetching projects fails, the agent just won't have the context
@@ -171,9 +163,8 @@ export async function* handleChatMessage(
   tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
   const tomorrowDate = tomorrow.toISOString().slice(0, 10);
 
-  // Uses response_format: json_object so the model can include an optional
-  // structured proposal sidecar in a single call — no second LLM call needed.
-  // Tools are intentionally omitted — the model structurally cannot call another tool.
+  // Edit mode retains its no-tools JSON generation. Read/create mode receives
+  // the same policy/history/default context, then adds native lookup results.
   const messages = buildPrompt({
     message,
     toolResults,
@@ -182,18 +173,56 @@ export async function* handleChatMessage(
     projectsContext,
     teamSprintContext,
     currentUserName: user.displayName,
+    currentUserRole: user.role,
     tomorrowDate,
     mainAgentInstructions,
   });
 
-  const response = await openai.chat.completions.create({
-    model: "gpt-4o-mini",
-    stream: false,
-    messages,
-    response_format: { type: "json_object" },
-  });
+  let rawContent: string;
+  if (toolCalls.some(call => call.intent === "PREPARE_TASK_EDIT")) {
+    const response = await openai.chat.completions.create({
+      model: "gpt-4o-mini", stream: false, messages,
+      response_format: { type: "json_object" },
+    });
+    rawContent = response.choices[0]?.message?.content ?? "";
+  } else {
+    const system = messages.filter(turn => turn.role === "system").map(turn => String(turn.content)).join("\n\n");
+    const conversation: ClaudeMessage[] = messages.filter(turn => turn.role === "user" || turn.role === "assistant")
+      .map(turn => ({ role: turn.role as "user" | "assistant", content: String(turn.content) }));
+    rawContent = JSON.stringify({ answer: "Chat could not finish. Please try again." });
+    for await (const event of runLookupLoop({
+      system, messages: conversation,
+      execute: call => executeReadTool(call, user, storage),
+    })) {
+      if (event.type === "route") yield event;
+      else {
+        const { answer, proposal, docChunks: retrieved } = event.data;
+        docChunks = retrieved;
+        if (proposal) {
+          try {
+            const [projects, milestones, users] = await Promise.all([
+              listProjects(), listMilestones(), storage.getAllUsers(),
+            ]);
+            const grounded = groundCreationReferences(proposal, { projects, milestones, users });
+            rawContent = JSON.stringify({
+              answer: answer + (grounded.warnings.length ? `\n\n${grounded.warnings.join("\n\n")}` : ""),
+              proposal: grounded.proposal,
+            });
+          } catch {
+            rawContent = JSON.stringify({ answer: "I couldn't verify the task's references. Please try again. No task changes were saved." });
+          }
+        } else rawContent = JSON.stringify({ answer });
+      }
+    }
+  }
 
-  const rawContent = response.choices[0]?.message?.content ?? "";
+  yield { type: "citations", data: docChunks };
+  for (const chunk of docChunks) {
+    await storage.createCitation({
+      userId: user.id, documentId: chunk.documentId, chunkId: chunk.chunkId,
+      query: message.slice(0, 500), createdAt: new Date().toISOString(),
+    });
+  }
 
   // Parse the JSON response — graceful degradation on failure
   let answerText = rawContent;

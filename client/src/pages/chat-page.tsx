@@ -594,7 +594,7 @@ export default function ChatPage() {
                 const toolsUsed = current.toolsUsed ?? [];
                 updated[updated.length - 1] = {
                   ...current,
-                  toolsUsed: toolsUsed.includes(toolUsed) ? toolsUsed : [...toolsUsed, toolUsed],
+                  toolsUsed: [...toolsUsed, toolUsed],
                 };
                 return updated;
               });
@@ -802,22 +802,23 @@ export default function ChatPage() {
                   ) : (
                     <>
                        {msg.toolsUsed?.some(tool => tool !== "NO_TOOL") && (
-                        <div className="flex items-center gap-1.5 mb-1 ml-1" data-testid={`tool-indicator-${i}`}>
-                           {msg.toolsUsed.filter(tool => tool !== "NO_TOOL").map(tool => (
-                             <span key={tool} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-muted text-muted-foreground/70 text-[11px]">
+                        <div className="flex flex-wrap items-center gap-1.5 mb-1 ml-1" role="status" aria-live="polite" data-testid={`tool-indicator-${i}`}>
+                           {msg.toolsUsed.filter(tool => tool !== "NO_TOOL").map((tool, lookupIndex) => (
+                             <span key={`${tool}-${lookupIndex}`} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-muted text-muted-foreground/70 text-[11px]">
                                {tool === "SEE_TASKS" && <ListTodo className="w-3 h-3" />}
                                {tool === "PREPARE_TASK_EDIT" && <ListTodo className="w-3 h-3" />}
                                {tool === "SEE_PROJECTS" && <FolderKanban className="w-3 h-3" />}
                                {(tool === "READ_PROJECT_CONTEXT" || tool === "TEAM_SPRINT_PLANS") && <BookOpen className="w-3 h-3" />}
                                {tool === "SEE_TEAM" && <Users className="w-3 h-3" />}
                                {tool === "READ_DOCS" && <FileText className="w-3 h-3" />}
-                               {tool === "SEE_TASKS" && "Task Board"}
+                               {tool === "SEE_TASKS" && "Searching tasks"}
                                {tool === "PREPARE_TASK_EDIT" && "Task edit lookup"}
-                               {tool === "SEE_PROJECTS" && "Projects"}
+                               {tool === "SEE_PROJECTS" && "Searching projects"}
                                {tool === "READ_PROJECT_CONTEXT" && "Plans & overviews"}
                                {tool === "TEAM_SPRINT_PLANS" && "Team sprint plans"}
                                {tool === "SEE_TEAM" && "Team"}
                                {tool === "READ_DOCS" && "Documents"}
+                               {msg.toolsUsed!.slice(0, lookupIndex).includes(tool) && " (again)"}
                              </span>
                            ))}
                         </div>

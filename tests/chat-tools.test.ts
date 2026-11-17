@@ -5,6 +5,7 @@ import { buildPrompt } from "../server/promptBuilder";
 import { validateProposal } from "../server/proposalSchema";
 import { settleReadToolCalls } from "../server/readToolExecution";
 import { runSeeTeamTool } from "../server/seeTeamTool";
+import { runSeeTasksTool } from "../server/seeTasksTool";
 import { queryTasks } from "../server/taskService";
 import {
   buildRouterMessages,
@@ -24,6 +25,7 @@ import {
 import { eq } from "drizzle-orm";
 import type { IStorage } from "../server/storage";
 import type { User } from "../shared/schema";
+import { LOOKUP_RULES, LOOKUP_TOOLS } from "../server/lookupTools";
 
 test("router keeps bounded recent history for follow-up questions", () => {
   const history = Array.from({ length: 12 }, (_, index) => ({
@@ -37,6 +39,36 @@ test("router keeps bounded recent history for follow-up questions", () => {
   assert.equal(messages.at(-1)?.content, "What about Angela?");
   assert.equal(messages.length, 10);
   assert.equal(messages[1].content, "turn-4");
+});
+
+test("creation loop requests topic-based search while the legacy gate only selects edits", () => {
+  assert.match(LOOKUP_RULES, /For task creation, call see_tasks/);
+  assert.match(LOOKUP_RULES, /meaningful topic keywords/);
+  assert.match(LOOKUP_RULES, /duplicates or related tasks/);
+  assert.match(LOOKUP_RULES, /across assignees\/statuses\/sprints unless the user requested/);
+  assert.match(String(buildRouterMessages("Edit task 10")[0].content), /edit an existing task/);
+  assert.equal(LOOKUP_TOOLS.length, 5);
+  assert.ok(!LOOKUP_TOOLS.some(tool => tool.name === "prepare_task_edit"));
+  const calls = normalizeToolCalls([{ name: "see_tasks", arguments: JSON.stringify({
+    query: "launch handoff", mode: "matching_tasks",
+  }) }], "Create a task to review the launch handoff");
+  assert.equal(calls[0].intent, "SEE_TASKS");
+  assert.equal((calls[0].args as { query?: string }).query, "launch handoff");
+});
+
+test("authenticated account role is supplied for creation, reads and edits without granting authority", () => {
+  for (const role of ["admin", "user"]) {
+    for (const edit of [false, true]) {
+      const messages = buildPrompt({
+        message: "Help with this task", currentUserName: "Viewer", currentUserRole: role,
+        ...(edit ? { toolResults: [{ type: "task_edit" as const, content: "Current task", isEmpty: false }] } : {}),
+      });
+      const context = messages.filter(message => message.role === "system").map(message => message.content).join("\n");
+      assert.ok(context.includes(`CURRENT USER ROLE: ${role}`));
+      assert.match(context, /does not override application authorization or review requirements/);
+    }
+  }
+  assert.doesNotMatch(buildPrompt({ message: "Hello" }).map(m => m.content).join("\n"), /CURRENT USER ROLE: undefined/);
 });
 
 test("router validates, de-duplicates, and caps compatible read tools", () => {
@@ -177,6 +209,8 @@ test("task query intersects text, status, blocked, project, milestone, sprint, a
   const insertedTasks = await db.insert(tasksTable).values([
     {
       title: `Matching handoff ${suffix}`,
+      dueDate: "2030-01-02",
+      size: "M",
       status: "in_progress",
       isBlocked: true,
       blockedReason: "Waiting",
@@ -209,6 +243,20 @@ test("task query intersects text, status, blocked, project, milestone, sprint, a
       assigneeIds: [user.id],
     });
     assert.deepEqual(matches.map(task => task.id), [insertedTasks[0].id]);
+    const related = await runSeeTasksTool({
+      query: "unmatchedtopic HANDOFF", project: project.name, mode: "matching_tasks",
+    });
+    assert.deepEqual(related.tasks.map(task => task.id).sort(), insertedTasks.map(task => task.id).sort());
+    assert.equal(related.counts.in_progress, 1);
+    assert.equal(related.counts.done, 1);
+    assert.match(related.content, /Due: 2030-01-02 \| Size: M \| Sprint: \d+/);
+    assert.ok(related.content.includes(`Sprint: ${sprint.number}`));
+    assert.match(related.content, /Due: Not set \| Size: Not set/);
+    // Fuzzy discovery must not loosen identity resolution for existing-task edits.
+    assert.deepEqual(await queryTasks({ query: "unmatchedtopic handoff", projectIds: [project.id] }), []);
+    assert.deepEqual(await queryTasks({ query: "%", queryMatch: "any_word", projectIds: [project.id] }), []);
+    await db.update(tasksTable).set({ sprintId: null }).where(eq(tasksTable.id, insertedTasks[1].id));
+    assert.match((await runSeeTasksTool({ query: suffix, project: project.name })).content, /Sprint: Backlog/);
   } finally {
     await db.delete(taskAssigneesTable).where(eq(taskAssigneesTable.userId, user.id));
     await db.delete(tasksTable).where(eq(tasksTable.projectId, project.id));

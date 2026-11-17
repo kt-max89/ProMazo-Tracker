@@ -18,6 +18,10 @@ export type CompactTask = {
   projectName?: string | null;
   milestoneName?: string | null;
   assigneeNames?: string[];
+  dueDate?: string | null;
+  size?: Task["size"];
+  sprintId?: number | null;
+  sprintNumber?: number | null;
 };
 
 export type SeeTasksResult = {
@@ -35,8 +39,9 @@ async function enrichTasks(tasks: Task[]): Promise<CompactTask[]> {
   const projectIds = Array.from(new Set(tasks.map((t) => t.projectId).filter((id): id is number => id != null)));
   const milestoneIds = Array.from(new Set(tasks.map((t) => t.milestoneId).filter((id): id is number => id != null)));
   const assigneeIds = Array.from(new Set(tasks.flatMap((t) => t.assigneeIds)));
+  const sprintIds = Array.from(new Set(tasks.map(t => t.sprintId).filter((id): id is number => id != null)));
 
-  const [allProjects, allMilestones, allUsers] = await Promise.all([
+  const [allProjects, allMilestones, allUsers, sprints] = await Promise.all([
     projectIds.length > 0 ? listProjects() : Promise.resolve([]),
     milestoneIds.length > 0 ? listMilestones() : Promise.resolve([]),
     assigneeIds.length > 0
@@ -44,16 +49,24 @@ async function enrichTasks(tasks: Task[]): Promise<CompactTask[]> {
           .from(usersTable)
           .where(inArray(usersTable.id, assigneeIds))
       : Promise.resolve([]),
+    sprintIds.length
+      ? db.select({ id: sprintsTable.id, number: sprintsTable.number }).from(sprintsTable).where(inArray(sprintsTable.id, sprintIds))
+      : Promise.resolve([]),
   ]);
 
   const projectMap = new Map(allProjects.map((p) => [p.id, p.name]));
   const milestoneMap = new Map(allMilestones.map((m) => [m.id, m.name]));
   const userMap = new Map(allUsers.map((u) => [u.id, u.displayName]));
+  const sprintMap = new Map(sprints.map(s => [s.id, s.number]));
 
   return tasks.map((t) => ({
     id: t.id,
     title: t.title,
     status: t.status,
+    dueDate: t.dueDate,
+    size: t.size,
+    sprintId: t.sprintId,
+    sprintNumber: t.sprintId == null ? null : sprintMap.get(t.sprintId) ?? null,
     description: t.description ? t.description.slice(0, 120) : null,
     isBlocked: t.isBlocked,
     blockedReason: t.blockedReason ?? null,
@@ -65,6 +78,8 @@ async function enrichTasks(tasks: Task[]): Promise<CompactTask[]> {
 
 function formatCompact(t: CompactTask): string {
   let line = `- #${t.id} [${t.status}] ${t.title}`;
+  line += ` | Due: ${t.dueDate ?? "Not set"} | Size: ${t.size ?? "Not set"}`;
+  line += ` | Sprint: ${t.sprintId == null ? "Backlog" : t.sprintNumber ?? `Unknown (ID ${t.sprintId})`}`;
   if (t.projectName) line += ` | Project: ${t.projectName}`;
   if (t.milestoneName) line += ` | Milestone: ${t.milestoneName}`;
   if (t.assigneeNames && t.assigneeNames.length > 0) line += ` | Assigned to: ${t.assigneeNames.join(", ")}`;
@@ -90,6 +105,7 @@ export async function runSeeTasksTool(args: SeeTasksArgs): Promise<SeeTasksResul
   const filters: TaskFilters = {
     archived: false,
     query: args.query,
+    queryMatch: "any_word",
     status: args.status,
     isBlocked: args.isBlocked,
   };

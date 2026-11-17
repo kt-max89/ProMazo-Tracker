@@ -16,6 +16,7 @@ import {
 export type TaskFilters = {
   archived?: boolean;
   query?: string;
+  queryMatch?: "any_word";
   status?: TaskStatus;
   isBlocked?: boolean;
   projectIds?: number[];
@@ -109,12 +110,16 @@ export async function queryTasks(filters: TaskFilters = {}): Promise<Task[]> {
     conditions.push(eq(tasksTable.isBlocked, filters.isBlocked));
   }
   if (filters.query?.trim()) {
-    const query = `%${filters.query.trim()}%`;
+    // Chat discovery searches any topic word; identity-sensitive edit lookups
+    // retain their existing phrase matching unless explicitly opted in.
+    const terms = filters.queryMatch === "any_word"
+      ? Array.from(new Set(filters.query.trim().split(/\s+/)))
+      : [filters.query.trim()];
     conditions.push(
-      or(
-        ilike(tasksTable.title, query),
-        ilike(tasksTable.description, query),
-      )!,
+      or(...terms.flatMap(term => {
+        const query = `%${term.replace(/[\\%_]/g, "\\$&")}%`;
+        return [ilike(tasksTable.title, query), ilike(tasksTable.description, query)];
+      }))!,
     );
   }
   if (filters.projectIds) {

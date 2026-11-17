@@ -208,7 +208,7 @@ try {
     assert.deepEqual(fullClear.find(event => event.type === "task_edit_proposal")?.data.changes, {
       description: null, dueDate: null, size: null, assigneeIds: [], projectId: null,
       milestoneId: null, sprintId: null, isBlocked: false, blockedReason: null,
-    });
+    }, JSON.stringify(fullClear));
     const read = await chat(`What is the status of task #${taskIds[0]}? Do not edit anything.`);
     assert.ok(!read.some(event => event.type === "task_edit_proposal" || event.type === "task_proposal"));
     const missing = await chat("Set task #2147483647 to done.");
