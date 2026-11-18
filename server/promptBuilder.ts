@@ -1,5 +1,15 @@
 import type OpenAI from "openai";
 
+// Shared by the creation and edit contracts so the clarifying-question UI works
+// in both modes, including when admins replace the general instructions.
+const CLARIFYING_QUESTION_RULES = `Clarifying questions (interactive UI):
+- When the user asks you to create or change something and a missing detail would materially change the result (which task, project, milestone, person, scope, or deadline), ask BEFORE proposing. Add a "questions" key with 1 to 4 questions. The app shows them one at a time, most important first, each with your suggested answers as a stacked list, a "type your own answer" row, and Skip / Skip all buttons. Put the most important question first.
+- Shape: "questions": [{"header": "Project", "prompt": "Which project should this go under?", "options": ["Alpha", "Beta"], "recommendedIndex": 0}]
+- "header": a 1 to 3 word label. "prompt": one short question ending with "?". Do not repeat the questions inside "answer"; keep "answer" to a brief lead-in such as "A few quick questions before I draft this."
+- "options": 0 to 4 short, distinct, mutually exclusive suggested answers grounded in the provided data (exact task titles with IDs, project names, people) or sensible defaults. Never invent tracker records. Use [] when the answer is open-ended. Do not add an "Other" option; the free-text box is always shown. "recommendedIndex" marks your best guess; omit it if you have none.
+- Ask only about details that matter; minor gaps should be filled with reasonable defaults instead. Never include "questions" together with "proposal" or "editProposal". Never ask the same question twice.
+- If a later message says questions were skipped, do not ask them again. Make conservative choices that avoid overcommitting (leave optional fields empty, keep scope minimal, prefer the current user and existing records, never guess IDs), then act. In "answer", explain each guess explicitly, e.g. "You didn't answer, so I guessed the Alpha project because it is the only active one."`;
+
 const SYSTEM_PROMPT = `You are an internal project-management and team-support assistant for the ProMazo national team. ProMazo connects top university talent with big companies. You help the team understand work, projects, people, sprints, updates, reflections, and relevant internal documents.
 
 Follow these rules strictly:
@@ -61,9 +71,10 @@ Task description structure (include a "description" for every proposed task):
 - Do not omit any of the three top-level sections and do not add extra top-level sections. Definition of Done is a nested subsection, not a fourth top-level section.
 
 When to propose a task vs. ask for clarification:
-- Propose a task whenever the user's message contains any actionable goal or topic — even if details are thin. Fill in the three sections as best you can from available context, making reasonable inferences.
+- Propose a task whenever the user's message contains any actionable goal or topic, even if details are thin. Fill in the three sections as best you can from available context, making reasonable inferences.
+- Exception: if a missing detail would materially change the task (which project, who owns it, what the deliverable is), ask with "questions" first and propose on the next turn. Defaults such as tomorrow's due date and the current user as assignee are NOT reasons to ask.
 - In your "answer", you may include a brief follow-up question alongside the proposal if key details are missing (e.g. "I've created a task — let me know if you'd like to add assignees or refine the steps"). Do NOT withhold the proposal just because information is incomplete.
-- Only skip the proposal and ask for clarification instead when there is genuinely zero actionable content — e.g. a bare "make a task" or "add a task" with no topic whatsoever.
+- Only skip the proposal and ask for clarification instead when there is genuinely zero actionable content — e.g. a bare "make a task" or "add a task" with no topic whatsoever. In that case ask with "questions" (options: [] or likely topics from context).
 - It is always better to propose a reasonable best-effort task than to refuse and ask for more detail.
 
 Output format:
@@ -94,7 +105,9 @@ If you do not want to propose tasks (including when you are asking clarifying qu
 
 Answer content format (inside the "answer" string):
 - Concise answer using markdown where helpful
-- Include Sources section only when citing documents directly`;
+- Include Sources section only when citing documents directly
+
+${CLARIFYING_QUESTION_RULES}`;
 
 export type ToolResult = {
   type: "tasks" | "projects" | "team" | "docs" | "plans" | "task_edit";
@@ -152,6 +165,10 @@ For clearing requested fields:
 For clarification, read-only answers, or unsupported operations:
 {"answer":"Which task ID do you mean?"}
 Never use the creation key "proposal" or "tasks". Never claim the edit is already saved.
+For a clarification with known candidates, you may add "questions" (never with editProposal):
+{"answer":"Two tasks match.","questions":[{"header":"Task","prompt":"Which task do you mean?","options":["#12 Launch email","#18 Launch survey"]}]}
+
+${CLARIFYING_QUESTION_RULES}
 `;
 
 export type HistoryMessage = {
@@ -169,6 +186,8 @@ export type PromptInput = {
   currentUserName?: string;
   tomorrowDate?: string;
   mainAgentInstructions?: string;
+  /** Prompts of clarifying questions the user skipped on this turn. */
+  skippedQuestions?: string[];
 };
 
 // Administrators edit the assistant's general policy, not wire formats or
@@ -262,6 +281,19 @@ export function buildPrompt(
     for (const turn of history) {
       messages.push({ role: turn.role, content: turn.content });
     }
+  }
+
+  // Set by the server from the structured question response, so a typed
+  // message cannot fake or suppress it.
+  if (input.skippedQuestions && input.skippedQuestions.length > 0) {
+    messages.push({
+      role: "system",
+      content: [
+        "The user skipped these clarifying questions:",
+        ...input.skippedQuestions.map(prompt => `- ${JSON.stringify(prompt)}`),
+        "Do not ask them again and do not include \"questions\" in this response. Make conservative choices that avoid overcommitting, then proceed. In \"answer\", state each guess explicitly in the form \"You didn't answer, so I guessed ... because ...\".",
+      ].join("\n"),
+    });
   }
 
   messages.push({ role: "user", content: userContent });

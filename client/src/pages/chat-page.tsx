@@ -15,6 +15,11 @@ import { ProposalAssigneeSelect } from "@/components/proposal-assignee-select";
 import { TaskEditProposalReview } from "@/components/task-edit-proposal-review";
 import type { TaskEditProposal } from "@shared/taskEdits";
 import type { Task } from "@shared/schema";
+import { ClarifyingQuestions } from "@/components/clarifying-questions";
+import {
+  formatQuestionResponse, questionResponseSchema,
+  type QuestionResponseInput, type QuestionSet,
+} from "@shared/clarifyingQuestion";
 
 type Citation = {
   documentId: number;
@@ -31,6 +36,8 @@ type Message = {
   content: string;
   citations?: Citation[];
   toolsUsed?: ToolUsed[];
+  /** Clarifying questions the agent asked at the end of this message. */
+  questions?: QuestionSet;
 };
 
 type ChatSession = {
@@ -517,13 +524,30 @@ export default function ChatPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!query.trim() || isStreaming) return;
+    const userMessage = query.trim();
+    setQuery("");
+    await sendChat({ query: userMessage }, userMessage);
+  }
+
+  // Answers (or "Skip all") to the agent's clarifying questions go to the
+  // server structured; the visible user bubble uses the same text the server
+  // stores, so history matches after a reload.
+  async function handleQuestionResponse(response: QuestionResponseInput) {
+    if (isStreaming) return;
+    const parsed = questionResponseSchema.safeParse(response);
+    if (!parsed.success) return;
+    await sendChat({ questionResponse: response }, formatQuestionResponse(parsed.data));
+  }
+
+  async function sendChat(
+    payload: { query: string } | { questionResponse: QuestionResponseInput },
+    userMessage: string,
+  ) {
     activeRequest.current?.abort();
     const generation = ++requestGeneration.current;
     const controller = new AbortController();
     activeRequest.current = controller;
 
-    const userMessage = query.trim();
-    setQuery("");
     setMessages(prev => [...prev, { role: "user", content: userMessage }]);
     setIsStreaming(true);
 
@@ -545,7 +569,7 @@ export default function ChatPage() {
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         signal: controller.signal,
-        body: JSON.stringify({ query: userMessage, sessionId: currentSessionId }),
+        body: JSON.stringify({ ...payload, sessionId: currentSessionId }),
       });
       if (generation !== requestGeneration.current) return;
 
@@ -610,6 +634,13 @@ export default function ChatPage() {
               setMessages(prev => {
                 const updated = [...prev];
                 updated[updated.length - 1] = { ...updated[updated.length - 1], content: assistantContent };
+                return updated;
+              });
+            } else if (parsed.type === "questions") {
+              const questions = parsed.data as QuestionSet;
+              setMessages(prev => {
+                const updated = [...prev];
+                updated[updated.length - 1] = { ...updated[updated.length - 1], questions };
                 return updated;
               });
             } else if (parsed.type === "task_proposal") {
@@ -833,6 +864,17 @@ export default function ChatPage() {
                           </span>
                         ) : null)}
                       </div>
+                      {msg.questions && (
+                        <ClarifyingQuestions
+                          // Remount per question set so drafts never leak between sets.
+                          key={msg.questions.questionSetId}
+                          questionSet={msg.questions}
+                          active={i === messages.length - 1}
+                          disabled={isStreaming}
+                          onRespond={handleQuestionResponse}
+                          testIdPrefix={`message-${i}`}
+                        />
+                      )}
                       {msg.citations && msg.citations.length > 0 && (
                         <div className="flex flex-wrap gap-1.5 ml-1">
                           {msg.citations.map((cit, ci) => (

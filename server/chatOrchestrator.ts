@@ -14,6 +14,8 @@ import { settleReadToolCalls } from "./readToolExecution";
 import { isFirstChatTurn, loadTeamSprintContext, runProjectKnowledgeTool } from "./projectKnowledgeTool";
 import { prepareTaskEdit, buildTaskEditProposal, type TaskEditContext } from "./taskEditService";
 import type { TaskEditProposal } from "@shared/taskEdits";
+import { parseQuestionSet, questionSetAsMarkdown, type QuestionSet } from "@shared/clarifyingQuestion";
+import { randomUUID } from "crypto";
 
 if (!process.env.OPENAI_API_KEY) {
   console.warn("OPENAI_API_KEY not set - AI features will not work");
@@ -33,6 +35,10 @@ export type OrchestratorInput = {
   user: User;
   storage: IStorage;
   sessionId?: number | null;
+  /** Prompts the user skipped when answering the agent's clarifying questions. */
+  skippedQuestions?: string[];
+  /** True when the user pressed "Skip all"; the agent must not ask again. */
+  skippedAllQuestions?: boolean;
 };
 
 export type OrchestratorYield =
@@ -41,13 +47,14 @@ export type OrchestratorYield =
   | { type: "token"; data: string }
   | { type: "task_proposal"; data: ValidatedProposal }
   | { type: "task_edit_proposal"; data: TaskEditProposal }
+  | { type: "questions"; data: QuestionSet }
   | { type: "done" }
   | { type: "error"; data: string };
 
 export async function* handleChatMessage(
   input: OrchestratorInput
 ): AsyncGenerator<OrchestratorYield> {
-  const { message, user, storage, sessionId } = input;
+  const { message, user, storage, sessionId, skippedQuestions, skippedAllQuestions } = input;
 
   // Step 0: load recent session history (if any) and bound it to a sane
   // context budget. Messages beyond the budget are collapsed into a short
@@ -184,6 +191,7 @@ export async function* handleChatMessage(
     currentUserName: user.displayName,
     tomorrowDate,
     mainAgentInstructions,
+    skippedQuestions,
   });
 
   const response = await openai.chat.completions.create({
@@ -199,6 +207,7 @@ export async function* handleChatMessage(
   let answerText = rawContent;
   let proposal: ValidatedProposal | null = null;
   let editProposal: TaskEditProposal | null = null;
+  let questionSet: QuestionSet | null = null;
 
   try {
     const parsed = JSON.parse(rawContent);
@@ -218,6 +227,11 @@ export async function* handleChatMessage(
       } else if (parsed.proposal !== undefined && parsed.editProposal === undefined) {
         proposal = validateProposal(parsed.proposal);
       }
+      // Clarifying questions never accompany a proposal, and after "Skip all"
+      // the agent must act on conservative guesses instead of asking again.
+      if (parsed.proposal === undefined && parsed.editProposal === undefined && !skippedAllQuestions) {
+        questionSet = parseQuestionSet(parsed, randomUUID());
+      }
     }
     // If answer key is missing/invalid, fall through to use rawContent as-is
   } catch {
@@ -226,12 +240,16 @@ export async function* handleChatMessage(
 
   // Emit the full answer as a single token (equivalent to streaming for MVP)
   yield { type: "token", data: answerText };
+  // Sent before "done" so the client attaches it to this assistant message.
+  if (questionSet) yield { type: "questions", data: questionSet };
 
   if (sessionId) {
+    // Persist the questions as markdown so the next turn's history shows the
+    // model what it asked and reloaded sessions still display them.
     await storage.addChatMessage({
       sessionId,
       role: "assistant",
-      content: answerText,
+      content: questionSet ? `${answerText}\n\n${questionSetAsMarkdown(questionSet)}` : answerText,
     });
 
     // Step 4: auto-title the session from the first exchange. Only runs
