@@ -869,7 +869,8 @@ export default function ChatPage() {
                           // Remount per question set so drafts never leak between sets.
                           key={msg.questions.questionSetId}
                           questionSet={msg.questions}
-                          active={!isStreaming && i === messages.length - 1}
+                          active={i === messages.length - 1}
+                          disabled={isStreaming}
                           onRespond={handleQuestionResponse}
                           testIdPrefix={`message-${i}`}
                         />
