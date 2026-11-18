@@ -42,6 +42,12 @@ Turn flow: intent selection → one tool call (or none) → final streaming answ
 - `server/promptBuilder.ts` — Builds OpenAI messages array from ToolResult (type, content, isEmpty, suggestRetry). When empty, instructs model to acknowledge and surface the retry suggestion verbatim.
 - `server/chatOrchestrator.ts` — Async generator enforcing one-tool-call-per-turn structurally: intent selector → single if/else tool branch → final LLM call with no tools defined (second tool call is architecturally impossible). Stub comment block for future proposed task actions (create_task, update_task_status, archive_task).
 
+### Clarifying Questions
+- `shared/clarifyingQuestion.ts` — Parser and formatter for the agent's optional `questions` sidecar (1–4 questions, each with 0–4 suggested answers and an optional `recommendedIndex`).
+- The final chat JSON may include `questions` instead of a proposal. The orchestrator emits a `questions` SSE event and stores the questions as markdown in the assistant message so the next turn sees them.
+- `client/src/components/clarifying-questions.tsx` — Renders each question as clickable suggestions plus a "type your own answer" box, with **Submit answers** and **Skip all**.
+- Answers go back to `POST /api/chat` as a structured `questionResponse` (no `query`). The server formats the user message and, for every skipped question, adds a system instruction telling the agent to make conservative choices and say "You didn't answer, so I guessed ... because ...". After Skip all, any new questions are dropped so the agent must act.
+
 ## Database Tables
 - `users` — credentials and roles
 - `documents` — file metadata and access control

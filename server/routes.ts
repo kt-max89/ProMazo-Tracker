@@ -25,6 +25,7 @@ import { createNextSprint, getTrackerSettings, listSprints, setCurrentSprint } f
 import { appendReflection, createReflection, getReflection, listReflections, reflectionAccess, ReflectionError } from "./reflectionService";
 import { chunkText, hashChunk, getEmbedding, getEmbeddings } from "./openai";
 import { handleChatMessage } from "./chatOrchestrator";
+import { formatQuestionResponse, questionResponseSchema, skippedQuestions, type QuestionResponse } from "@shared/clarifyingQuestion";
 import { reviewedProposalSchema } from "./proposalSchema";
 import { approveTaskEdit } from "./taskEditService";
 import { ProposalAssignmentError, resolveProposalAssignments } from "../shared/proposalAssignments";
@@ -489,13 +490,22 @@ export async function registerRoutes(
   // Chat / Q&A endpoint with streaming
   app.post("/api/chat", requireAuth, async (req, res) => {
     try {
-      const { query, sessionId } = req.body;
-      if (!query || typeof query !== "string" || query.trim().length === 0) {
+      const { query, sessionId, questionResponse: rawQuestionResponse } = req.body;
+      // A reply to the agent's clarifying questions arrives structured, so the
+      // server (not typed text) decides which questions were skipped.
+      let questionResponse: QuestionResponse | null = null;
+      if (rawQuestionResponse !== undefined) {
+        const parsedResponse = questionResponseSchema.safeParse(rawQuestionResponse);
+        if (!parsedResponse.success) {
+          return res.status(400).json({ message: "Invalid answers to clarifying questions" });
+        }
+        questionResponse = parsedResponse.data;
+      } else if (!query || typeof query !== "string" || query.trim().length === 0) {
         return res.status(400).json({ message: "Query is required" });
       }
 
       const user = req.user! as any;
-      const message = query.trim();
+      const message = questionResponse ? formatQuestionResponse(questionResponse) : query.trim();
 
       let activeSessionId = sessionId ? parseInt(sessionId) : null;
       if (activeSessionId) {
@@ -514,7 +524,11 @@ export async function registerRoutes(
       res.setHeader("Cache-Control", "no-cache");
       res.setHeader("Connection", "keep-alive");
 
-      for await (const event of handleChatMessage({ message, user, storage, sessionId: activeSessionId })) {
+      for await (const event of handleChatMessage({
+        message, user, storage, sessionId: activeSessionId,
+        skippedQuestions: questionResponse ? skippedQuestions(questionResponse) : undefined,
+        skippedAllQuestions: questionResponse?.answers.every(entry => entry.answer === null),
+      })) {
         if (event.type === "route") {
           res.write(`data: ${JSON.stringify({ type: "route", data: event.data })}\n\n`);
         } else if (event.type === "citations") {
@@ -534,6 +548,8 @@ export async function registerRoutes(
           res.write(`data: ${JSON.stringify({ type: "task_proposal", data: event.data })}\n\n`);
         } else if (event.type === "task_edit_proposal") {
           res.write(`data: ${JSON.stringify({ type: "task_edit_proposal", data: event.data })}\n\n`);
+        } else if (event.type === "questions") {
+          res.write(`data: ${JSON.stringify({ type: "questions", data: event.data })}\n\n`);
         } else if (event.type === "error") {
           res.write(`data: ${JSON.stringify({ type: "error", data: event.data })}\n\n`);
         }
