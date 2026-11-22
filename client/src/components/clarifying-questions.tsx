@@ -8,12 +8,12 @@ const TICK_MS = 16;
 // Brief highlight on a picked option before moving to the next question.
 const ADVANCE_DELAY_MS = 180;
 
-export function prefersReducedMotion(): boolean {
+function prefersReducedMotion(): boolean {
   return typeof window !== "undefined" && !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
 }
 
 /** Reveals `text` a few characters at a time, like streamed agent output. */
-export function useStreamedText(text: string, animate: boolean): { shown: string; done: boolean } {
+function useStreamedText(text: string, animate: boolean): { shown: string; done: boolean } {
   // The count is tied to the text it was measured against, so switching to a
   // new question never flashes the old progress for a frame.
   const [state, setState] = useState({ text, count: animate ? 0 : text.length });
@@ -36,7 +36,7 @@ export function useStreamedText(text: string, animate: boolean): { shown: string
   return { shown: text.slice(0, count), done: count >= text.length };
 }
 
-export const bubbleClass = "bg-card border rounded-2xl rounded-bl-md px-4 py-3";
+const bubbleClass = "bg-card border rounded-2xl rounded-bl-md px-4 py-3";
 
 /**
  * The agent's clarifying questions, shown one at a time inside the chat as an

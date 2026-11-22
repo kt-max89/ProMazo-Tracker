@@ -23,7 +23,7 @@ test("question sets are cleaned, capped at four questions and four options", () 
   assert.deepEqual(first.options, ["Alpha", "Beta", "Gamma", "Delta"]);
   // "Beta" was at raw index 4 and lands at index 1 after filtering.
   assert.equal(first.recommendedIndex, 1);
-  assert.deepEqual(second, { prompt: "Due when?", header: undefined, options: [], recommendedIndex: undefined, correctIndex: undefined, explanation: undefined });
+  assert.deepEqual(second, { prompt: "Due when?", header: undefined, options: [], recommendedIndex: undefined });
 });
 
 test("a single question object is accepted and junk yields null", () => {
@@ -54,41 +54,9 @@ test("responses treat blanks as skipped and Skip all overrides typed answers", (
   assert.equal(questionResponseSchema.safeParse({ questionSetId: "s", answers: [] }).success, false);
 });
 
-test("a quiz set keeps correct answers and explanations and remaps correctIndex", () => {
-  const set = parseQuestionSet({
-    quiz: true,
-    questions: [
-      { prompt: "What does RAG stand for?", options: ["", "Retrieval-Augmented Generation", "Rapid Agent Gateway"], correctIndex: 1, explanation: " It retrieves, then generates. " },
-    ],
-  }, "quiz-1");
-  assert.ok(set);
-  assert.equal(set.isQuiz, true);
-  const [first] = set.questions;
-  assert.deepEqual(first.options, ["Retrieval-Augmented Generation", "Rapid Agent Gateway"]);
-  // The empty option was dropped, so the raw index 1 lands at index 0.
-  assert.equal(first.correctIndex, 0);
-  assert.equal(first.explanation, "It retrieves, then generates.");
-});
-
-test("quiz questions without enough options or a valid correct answer are dropped", () => {
-  assert.equal(parseQuestionSet({ quiz: true, questions: [{ prompt: "One choice?", options: ["only"], correctIndex: 0 }] }, "q"), null);
-  assert.equal(parseQuestionSet({ quiz: true, questions: [{ prompt: "No answer?", options: ["A", "B"] }] }, "q"), null);
-  // Without the quiz flag the same payload is a normal (non-quiz) question set.
-  const plain = parseQuestionSet({ questions: [{ prompt: "Pick?", options: ["A", "B"], correctIndex: 0 }] }, "q");
-  assert.equal(plain?.isQuiz, undefined);
-});
-
-test("quiz markdown marks the correct answer and quotes the explanation", () => {
-  const set = parseQuestionSet({ quiz: true, questions: [{ prompt: "2+2?", options: ["3", "4"], correctIndex: 1, explanation: "Basic arithmetic." }] }, "q")!;
-  assert.equal(questionSetAsMarkdown(set), "1. **2+2?**\n   - 3\n   - 4 (correct)\n   > Basic arithmetic.");
-});
-
 test("both agent contracts teach the question format; skips add a conservative-guess instruction", () => {
   assert.match(AGENT_APPLICATION_RULES.creation, /"questions"/);
   assert.match(AGENT_APPLICATION_RULES.editing, /"questions"/);
-  // Both contracts also teach the quiz format.
-  assert.match(AGENT_APPLICATION_RULES.creation, /"quiz": true/);
-  assert.match(AGENT_APPLICATION_RULES.editing, /"quiz": true/);
 
   const plain = buildPrompt({ message: "Make a task" });
   assert.ok(!plain.some(m => m.role === "system" && String(m.content).includes("skipped these clarifying questions")));
