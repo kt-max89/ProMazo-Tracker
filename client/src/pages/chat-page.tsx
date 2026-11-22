@@ -16,6 +16,7 @@ import { TaskEditProposalReview } from "@/components/task-edit-proposal-review";
 import type { TaskEditProposal } from "@shared/taskEdits";
 import type { Task } from "@shared/schema";
 import { ClarifyingQuestions } from "@/components/clarifying-questions";
+import { Quiz } from "@/components/quiz";
 import {
   formatQuestionResponse, questionResponseSchema,
   type QuestionResponseInput, type QuestionSet,
@@ -864,7 +865,15 @@ export default function ChatPage() {
                           </span>
                         ) : null)}
                       </div>
-                      {msg.questions && (
+                      {msg.questions && (msg.questions.isQuiz ? (
+                        <Quiz
+                          // Remount per question set so progress never leaks between sets.
+                          key={msg.questions.questionSetId}
+                          questionSet={msg.questions}
+                          active={i === messages.length - 1}
+                          testIdPrefix={`message-${i}`}
+                        />
+                      ) : (
                         <ClarifyingQuestions
                           // Remount per question set so drafts never leak between sets.
                           key={msg.questions.questionSetId}
@@ -874,7 +883,7 @@ export default function ChatPage() {
                           onRespond={handleQuestionResponse}
                           testIdPrefix={`message-${i}`}
                         />
-                      )}
+                      ))}
                       {msg.citations && msg.citations.length > 0 && (
                         <div className="flex flex-wrap gap-1.5 ml-1">
                           {msg.citations.map((cit, ci) => (
